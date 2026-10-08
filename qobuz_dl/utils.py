@@ -59,12 +59,20 @@ def read_config_file(config, path):
         list: The files that were successfully read (as ConfigParser.read).
     """
     try:
-        return config.read(path, encoding="utf-8-sig")
+        with open(path, "rb") as source:
+            raw = source.read()
+    except OSError:
+        return []
+    try:
+        text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        for section in config.sections():
-            config.remove_section(section)
-        config[config.default_section].clear()
-        return config.read(path, encoding=locale.getpreferredencoding(False))
+        # Python can use UTF-8 even when an older Windows app wrote cp1252.
+        try:
+            text = raw.decode(locale.getpreferredencoding(False))
+        except UnicodeDecodeError:
+            text = raw.decode("cp1252")
+    config.read_string(text, source=str(path))
+    return [str(path)]
 
 
 def make_m3u(pl_directory, remote_items=None):
@@ -84,10 +92,11 @@ def make_m3u(pl_directory, remote_items=None):
     import logging
     from mutagen.id3 import ID3
     from mutagen.flac import FLAC
+    from mutagen.mp4 import MP4
     from mutagen import File
     
     logger = logging.getLogger(__name__)
-    EXTENSIONS = (".mp3", ".flac")
+    EXTENSIONS = (".mp3", ".flac", ".m4a")
 
     track_list = ["#EXTM3U"]
     rel_folder = os.path.basename(os.path.normpath(pl_directory))
@@ -122,6 +131,14 @@ def make_m3u(pl_directory, remote_items=None):
                         info['isrc'] = audio.get("ISRC", [None])[0]
                         info['title'] = audio.get("TITLE", [""])[0]
                         info['artist'] = audio.get("ARTIST", [""])[0]
+                    elif audio_full_path.lower().endswith('.m4a'):
+                        audio = MP4(audio_full_path)
+                        tid = audio.get("----:com.apple.iTunes:QOBUZTRACKID", [b""])[0]
+                        isrc = audio.get("----:com.apple.iTunes:ISRC", [b""])[0]
+                        info['qobuz_id'] = bytes(tid).decode("utf-8")
+                        info['isrc'] = bytes(isrc).decode("utf-8")
+                        info['title'] = audio.get("\u00a9nam", [""])[0]
+                        info['artist'] = ", ".join(audio.get("\u00a9ART", []))
                     else:
                         audio = ID3(audio_full_path)
                         # Correct way to find custom TXXX frames in ID3

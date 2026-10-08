@@ -26,6 +26,7 @@ class QobuzDLSettings:
         self.no_m3u = kwargs.get('no_m3u', False)
         self.albums_only = kwargs.get('albums_only', False)
         self.no_fallback = not kwargs.get('no_fallback', False)
+        self.segmented_fallback = kwargs.get('segmented_fallback', True)
         self.no_database = kwargs.get('no_database', False)
         self.app_id = kwargs.get('app_id')
         self.secrets = kwargs.get('secrets')

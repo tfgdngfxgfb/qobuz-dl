@@ -1,0 +1,74 @@
+from qobuz_dl.utils import read_config_file
+import configparser
+import hashlib
+import logging
+import os
+from pathlib import Path
+
+from flask import jsonify, request
+
+
+def _resolve(value):
+    return value() if callable(value) else value
+
+
+def _canonicalize_folder(raw: str) -> str:
+    folder = (raw or "").strip() or "Qobuz Downloads"
+    try:
+        if folder != "Qobuz Downloads" and (
+            os.path.isabs(folder) or folder.startswith("~")
+        ):
+            return str(Path(folder).expanduser().resolve())
+    except OSError:
+        pass
+    return folder
+
+
+def register_config_routes(app, *, config_file, on_config_updated) -> None:
+    @app.route("/api/config", methods=["GET", "POST"])
+    def api_config():
+        config_file_value = _resolve(config_file)
+        if not os.path.isfile(config_file_value):
+            return jsonify({"ok": False, "error": "No config file"}), 400
+
+        cfg = configparser.ConfigParser()
+        read_config_file(cfg, config_file_value)
+        if request.method == "GET":
+            return jsonify(
+                {
+                    "ok": True,
+                    "config": {
+                        k: v
+                        for k, v in cfg["DEFAULT"].items()
+                        if k != "genius_token"
+                    },
+                }
+            )
+
+        data = request.json or {}
+        data.pop("genius_token", None)
+        if "default_folder" in data and data["default_folder"] is not None:
+            data["default_folder"] = _canonicalize_folder(str(data["default_folder"]))
+        for key, val in data.items():
+            if key == "new_password":
+                if val:
+                    cfg["DEFAULT"]["password"] = hashlib.md5(
+                        val.encode("utf-8")
+                    ).hexdigest()
+            else:
+                cfg["DEFAULT"][key] = str(val)
+        if cfg.has_option("DEFAULT", "genius_token"):
+            cfg.remove_option("DEFAULT", "genius_token")
+        try:
+            with open(config_file_value, "w", encoding="utf-8") as f:
+                cfg.write(f)
+        except OSError as e:
+            logging.error("Failed to write config: %s", e)
+            return jsonify({"ok": False, "error": f"Could not save config: {e}"}), 500
+        if "default_folder" in data:
+            logging.info(
+                "Saved default_folder=%s",
+                cfg["DEFAULT"].get("default_folder", ""),
+            )
+        on_config_updated(cfg)
+        return jsonify({"ok": True})

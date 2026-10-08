@@ -26,3 +26,13 @@ dist/
 
 # User configuration and local testing files
 blacklist.txt
+# Local GUI configuration, audio and verification scratch files
+.work/
+.pytest_cache/
+config.ini
+*.db
+*.log
+*.flac
+*.mp3
+*.m4a
+!qobuz_dl_gui.spec

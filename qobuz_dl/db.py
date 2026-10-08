@@ -1,3 +1,4 @@
+from contextlib import closing
 import logging
 import sqlite3
 
@@ -19,7 +20,7 @@ def create_db(db_path):
     Returns:
         str: The path to the successfully initialized database.
     """
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         cursor = conn.cursor()
         
         # Check if the table already exists
@@ -134,7 +135,7 @@ def handle_download_id(db_path, item_id, add_id=False, media_type='album', quali
     if not db_path:
         return
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         if add_id:
             try:
                 # Inject artist and album dynamically into the database
@@ -171,7 +172,7 @@ def get_stats(db_path):
     if not db_path:
         return []
     try:
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
             cursor = conn.cursor()
             # We select unique artists, excluding empty strings
             cursor.execute("SELECT DISTINCT artist FROM downloads WHERE artist != '' ORDER BY artist ASC")

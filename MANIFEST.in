@@ -1,0 +1,5 @@
+recursive-include qobuz_dl/gui *
+recursive-include assets *.gif
+include README.md
+include LICENSE
+recursive-include docs *.md

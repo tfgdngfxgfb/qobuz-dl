@@ -2,7 +2,7 @@ import os
 from setuptools import setup, find_packages
 
 # 1. NEW PACKAGE NAME (Must be unique on PyPI)
-pkg_name = "qobuz-dl-ultimate"
+pkg_name = "qobuz-dl-ultimate-gui"
 
 def get_version():
     init_path = os.path.join(os.path.dirname(__file__), "qobuz_dl", "__init__.py")
@@ -33,12 +33,17 @@ requirements = [
     "keyring",
     # used by the radar command
     "questionary",
+    "defusedxml",
+    "Flask>=3.0",
+    "pywebview>=5.0",
+    "pyperclip",
+    "packaging",
 ]
 
 setup(
     name=pkg_name,
     # 2. VERSION READ AUTOMATICALLY FROM __init__.py
-    version=get_version(),  
+    version=get_version(),
     # 3. AUTHOR INFO
     author="Riccardo (Sei969)",
     author_email="Sei969@users.noreply.github.com",
@@ -46,27 +51,29 @@ setup(
     long_description=read_file("README.md"),
     long_description_content_type="text/markdown",
     # 4. LINK TO YOUR FORK
-    url="https://github.com/Sei969/qobuz-dl", 
-    
+    url="https://github.com/tfgdngfxgfb/qobuz-dl",
+
     project_urls={
         "Documentation": "https://github.com/Sei969/qobuz-dl/wiki",
-        "Source Code": "https://github.com/Sei969/qobuz-dl",
-        "Bug Tracker": "https://github.com/Sei969/qobuz-dl/issues",
+        "Source Code": "https://github.com/tfgdngfxgfb/qobuz-dl",
+        "Bug Tracker": "https://github.com/tfgdngfxgfb/qobuz-dl/issues",
     },
-    
+
     install_requires=requirements,
     entry_points={
         "console_scripts": [
             # Keeping the original command names for backward compatibility
             "qobuz-dl = qobuz_dl:main",
             "qdl = qobuz_dl:main",
+            "qobuz-dl-gui = qobuz_dl.gui_app:main",
         ],
     },
     packages=find_packages(),
+    include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License (GPL)",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.6",
+    python_requires=">=3.10",
 )

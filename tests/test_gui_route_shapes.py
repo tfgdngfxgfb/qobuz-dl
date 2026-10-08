@@ -1,0 +1,205 @@
+import os
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import qobuz_dl.gui_backend.gui_app as gui_app
+from qobuz_dl.gui_backend.config_defaults import apply_common_defaults
+
+
+class GuiRouteShapeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = self.tmp.name
+        self.patches = [
+            patch.object(gui_app, "CONFIG_PATH", root),
+            patch.object(gui_app, "CONFIG_FILE", os.path.join(root, "config.ini")),
+            patch.object(gui_app, "DOWNLOAD_QUEUE_JSON", os.path.join(root, "download_queue.json")),
+            patch.object(gui_app, "GUI_FEEDBACK_HISTORY_JSON", os.path.join(root, "feedback.json")),
+            patch.object(gui_app, "QOBUZ_DB", os.path.join(root, "qobuz_dl.gui_backend.db")),
+        ]
+        for p in self.patches:
+            p.start()
+            self.addCleanup(p.stop)
+        gui_app.app.config.update(TESTING=True)
+        self.client = gui_app.app.test_client()
+
+    def _write_config(self):
+        import configparser
+
+        cfg = configparser.ConfigParser()
+        cfg["DEFAULT"] = {
+            "email": "",
+            "password": "",
+            "app_id": "",
+            "secrets": "",
+        }
+        apply_common_defaults(cfg["DEFAULT"], no_database="true")
+        os.makedirs(gui_app.CONFIG_PATH, exist_ok=True)
+        with open(gui_app.CONFIG_FILE, "w", encoding="utf-8") as f:
+            cfg.write(f)
+
+    def test_status_shape_uses_existing_endpoint(self):
+        res = self.client.get("/api/status")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIn("has_config", data)
+        self.assertIn("ready", data)
+        self.assertIn("config", data)
+        self.assertIn("app_version", data)
+
+    def test_config_get_post_shape_preserves_flat_keys(self):
+        self._write_config()
+        post = self.client.post(
+            "/api/config",
+            json={"default_quality": "6", "lyrics_enabled": "true"},
+        )
+        self.assertEqual(post.status_code, 200)
+        self.assertTrue(post.get_json()["ok"])
+
+        res = self.client.get("/api/config")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        self.assertNotIn("default_quality", data)
+        self.assertEqual(data["config"]["lyrics_enabled"], "true")
+        self.assertEqual(data["config"]["default_quality"], "6")
+
+    def test_connect_does_not_touch_download_folder(self):
+        import configparser
+
+        cfg = configparser.ConfigParser()
+        cfg["DEFAULT"] = {
+            "email": "",
+            "password": "",
+            "user_id": "123",
+            "user_auth_token": "token",
+            "app_id": "app",
+            "secrets": "secret",
+            "default_folder": "/Volumes/Musique",
+        }
+        apply_common_defaults(cfg["DEFAULT"], no_database="true")
+        os.makedirs(gui_app.CONFIG_PATH, exist_ok=True)
+        with open(gui_app.CONFIG_FILE, "w", encoding="utf-8") as f:
+            cfg.write(f)
+
+        with patch(
+            "qobuz_dl.gui_backend.core.create_and_return_dir",
+            side_effect=PermissionError("no access"),
+        ) as create_dir, patch(
+            "qobuz_dl.gui_backend.core.QobuzDL.initialize_client_with_token",
+            return_value=None,
+        ):
+            res = self.client.post("/api/connect")
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.get_json()["ok"])
+        create_dir.assert_not_called()
+
+    def test_oauth_start_returns_attempt_status(self):
+        class FakeBundle:
+            def get_app_id(self):
+                return "app"
+
+            def get_secrets(self):
+                return {"a": "secret"}
+
+            def get_private_key(self):
+                return "private"
+
+        class FakeThread:
+            def __init__(self, target, daemon=False):
+                self.target = target
+                self.daemon = daemon
+
+            def start(self):
+                pass
+
+        with patch("qobuz_dl.gui_backend.bundle.Bundle", return_value=FakeBundle()), patch(
+            "qobuz_dl.gui_backend.routes.auth_routes.threading.Thread",
+            FakeThread,
+        ), patch("qobuz_dl.gui_backend.routes.auth_routes.open_url"):
+            res = self.client.post("/api/oauth/start")
+
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        self.assertIn("attempt_id", data)
+        self.assertIn("baseline_auth_generation", data)
+
+        status = self.client.get(
+            "/api/oauth/status",
+            query_string={"attempt_id": data["attempt_id"]},
+        )
+        self.assertEqual(status.status_code, 200)
+        status_data = status.get_json()
+        self.assertTrue(status_data["ok"])
+        self.assertEqual(status_data["state"], "pending")
+
+        cancel = self.client.post(
+            "/api/oauth/cancel",
+            json={"attempt_id": data["attempt_id"]},
+        )
+        self.assertEqual(cancel.status_code, 200)
+        self.assertTrue(cancel.get_json()["ok"])
+
+        cancelled = self.client.get(
+            "/api/oauth/status",
+            query_string={"attempt_id": data["attempt_id"]},
+        )
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.get_json()["state"], "cancelled")
+
+    def test_download_queue_shape_round_trips_items_and_text_mode(self):
+        payload = {
+            "items": [{"url": "https://play.qobuz.com/album/example"}],
+            "text_mode": True,
+            "text_urls": "https://play.qobuz.com/track/example",
+        }
+        post = self.client.post("/api/download-queue", json=payload)
+        self.assertEqual(post.status_code, 200)
+        self.assertTrue(post.get_json()["ok"])
+
+        res = self.client.get("/api/download-queue")
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["items"][0]["url"], payload["items"][0]["url"])
+        self.assertIn("resolved", data["items"][0])
+        self.assertTrue(data["text_mode"])
+        self.assertEqual(data["text_urls"], payload["text_urls"])
+
+    def test_download_history_shape(self):
+        res = self.client.get("/api/download-history")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        self.assertIsInstance(data["items"], list)
+
+    def test_lyrics_search_shape_uses_existing_endpoint(self):
+        with patch(
+            "qobuz_dl.gui_backend.lyrics.lrclib_search_candidates_for_ui",
+            return_value=[{"id": 123, "kind": "synced"}],
+        ):
+            res = self.client.post(
+                "/api/lyrics/search",
+                json={"title": "Song", "artist": "Artist", "duration_sec": 180},
+            )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["results"][0]["id"], 123)
+
+    def test_lyrics_attach_and_stream_reject_paths_outside_allowed_roots(self):
+        outside = os.path.join(self.tmp.name, "..", "outside.flac")
+        attach = self.client.post(
+            "/api/lyrics/attach",
+            json={"audio_path": outside, "lrclib_id": 1},
+        )
+        stream = self.client.get("/api/lyrics/stream-audio", query_string={"path": outside})
+        self.assertEqual(attach.status_code, 400)
+        self.assertEqual(stream.status_code, 403)
+
+
+if __name__ == "__main__":
+    unittest.main()

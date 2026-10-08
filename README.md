@@ -1,3 +1,43 @@
+# Qobuz-DL Ultimate + GUI
+
+This fork uses [Sei969/qobuz-dl](https://github.com/Sei969/qobuz-dl) as its engine
+and retains the interface from [peykc/qobuz-dl-gui](https://github.com/peykc/qobuz-dl-gui).
+The original upstream documentation follows below.
+
+## Start the GUI
+
+Use Python 3.10 or newer. Install from this checkout:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m qobuz_dl.gui_app
+```
+
+On Windows, double-click `launch_gui.bat` after installation. It uses the local
+`.venv` when present. On Linux/macOS use `./launch_gui.sh` after creating a
+virtual environment and installing the requirements. The installed package also
+provides the `qobuz-dl-gui` command. Set `QOBUZ_DL_GUI_BROWSER=1` to use a browser
+instead of the desktop window, or run `launch_gui.bat --browser` on Windows.
+During development, restart the GUI after changing Python code. A desktop EXE
+build is only needed when distributing a standalone executable.
+
+Saved Windows configurations using cp1252 and Norwegian characters are accepted
+alongside UTF-8. The window opens before restoring the saved login.
+
+Sign in through OAuth or the token form. Keep artist and ISRC tags enabled in
+Settings. All credited track artists are stored separately, with complete
+performer credits retained. ISRC is taken from the recording actually downloaded.
+FLAC, MP3 and ALAC use the same source metadata; MP3 uses ID3v2.4.
+
+Install [FFmpeg](https://ffmpeg.org/download.html) on PATH for segmented streams
+and ALAC conversion. See [integration details](docs/UPSTREAM-INTEGRATION.md) for
+source versions, architecture, tests and future upstream updates. To create a
+local desktop executable, install `requirements-build.txt` and run
+`python -m PyInstaller --noconfirm qobuz_dl_gui.spec`.
+
+---
+
 # qobuz-dl Ultimate Edition
 [![PyPI version](https://img.shields.io/pypi/v/qobuz-dl-ultimate.svg)](https://pypi.org/project/qobuz-dl-ultimate/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/qobuz-dl-ultimate?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/qobuz-dl-ultimate) ![Docker Image CI](https://github.com/Sei969/qobuz-dl/actions/workflows/docker.yml/badge.svg) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Sei969/qobuz-dl/blob/master/Qobuz_Ultimate_Colab.ipynb)
 

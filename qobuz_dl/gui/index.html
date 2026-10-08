@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qobuz-DL</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <script>
+        (function () {
+            try {
+                var serverTheme = "__QOBUZ_GUI_THEME__";
+                var theme = "dark";
+                if (serverTheme === "light" || serverTheme === "dark") {
+                    theme = serverTheme;
+                } else {
+                    try {
+                        var stored = localStorage.getItem("qobuz_dl_gui_theme_v1");
+                        if (stored === "light" || stored === "dark") theme = stored;
+                    } catch (e) { }
+                }
+                if (theme === "light") {
+                    document.documentElement.setAttribute("data-theme", "light");
+                    document.documentElement.style.colorScheme = "light";
+                }
+                try {
+                    localStorage.setItem("qobuz_dl_gui_theme_v1", theme);
+                } catch (e) { }
+            } catch (e) { }
+        })();
+    </script>
+    <link rel="stylesheet" href="/gui/style.css?v=7" />
+</head>
+
+<body>
+    <div id="update-banner" class="update-banner hidden" role="status" aria-live="polite">
+        <div class="update-banner-inner">
+            <span id="update-banner-text" class="update-banner-text"></span>
+            <div class="update-banner-actions">
+                <button type="button" id="update-banner-install" class="btn-primary btn-sm hidden">
+                    Update &amp; restart
+                </button>
+                <a id="update-banner-link" class="btn-secondary btn-sm hidden" href="#" target="_blank"
+                    rel="noopener noreferrer">Release notes</a>
+                <button type="button" id="update-banner-dismiss" class="btn-ghost btn-sm">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- ======================== SETUP OVERLAY ======================== -->
+    <button id="auth-toast" class="auth-toast hidden" type="button" aria-live="assertive"></button>
+    <div id="setup-overlay" class="overlay hidden">
+        <div class="overlay-card">
+            <div class="overlay-logo">
+                <svg class="app-logo-mark" width="32" height="32" viewBox="0 0 192 192" fill="none"
+                    xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path stroke="var(--accent)" stroke-linecap="round" stroke-width="8"
+                        d="M140.672 157.486a76.004 76.004 0 0 1-102.464-12.128 76.001 76.001 0 0 1 107.15-107.15 76.004 76.004 0 0 1 12.128 102.464" />
+                    <path stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="15"
+                        stroke-width="8"
+                        d="M124.807 142.105a54.364 54.364 0 1 1 17.296-17.296" />
+                    <path stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="15"
+                        stroke-width="8"
+                        d="M95.997 117.193c11.705 0 21.193-9.488 21.193-21.193 0-11.704-9.488-21.193-21.193-21.193-11.704 0-21.193 9.489-21.193 21.193 0 11.705 9.489 21.193 21.193 21.193Z" />
+                    <path fill="var(--accent)" stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round"
+                        stroke-miterlimit="15" stroke-width="3.799"
+                        d="M95.997 98.103a2.103 2.103 0 1 0 0-4.205 2.103 2.103 0 0 0 0 4.205Z" />
+                    <path stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="15"
+                        stroke-width="12" d="m121.193 121.196 41.871 41.625" />
+                </svg>
+                <span>Qobuz<strong>DL</strong></span>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-auth="oauth" type="button">
+                    OAuth Login
+                </button>
+                <button class="auth-tab" data-auth="token" type="button">
+                    Paste Token
+                </button>
+            </div>
+
+            <!-- OAuth panel -->
+            <div id="auth-panel-oauth" class="auth-panel">
+                <p class="auth-desc">
+                    Opens Qobuz in your browser. Log in, then the app
+                    captures the token automatically.
+                </p>
+                <div class="form-group">
+                    <label for="setup-folder-oauth">Default Download Folder</label>
+                    <div class="input-browse-wrap">
+                        <input type="text" id="setup-folder-oauth" placeholder="Qobuz Downloads"
+                            value="Qobuz Downloads" />
+                        <button class="btn-browse" data-target="setup-folder-oauth" data-tip="Choose folder">
+                            Browse
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="setup-quality-oauth">Default Quality (auto-fallback on failure)</label>
+                    <select id="setup-quality-oauth" class="menu-select-target">
+                        <option value="27">Highest Available</option>
+                        <option value="6">Lowest Lossless</option>
+                        <option value="5">MP3 320</option>
+                    </select>
+                </div>
+                <div id="setup-error-oauth" class="error-msg hidden"></div>
+                <button id="oauth-btn" class="btn-primary btn-full">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                    <span id="oauth-btn-text">Login with Qobuz</span>
+                    <span id="oauth-spinner" class="spinner hidden"></span>
+                </button>
+                <p id="oauth-manual-open" class="oauth-manual-open hidden">
+                    Browser didn't open?
+                    <a id="oauth-manual-link" href="#" target="_blank" rel="noopener noreferrer">Open login page</a>
+                </p>
+            </div>
+
+            <!-- Token panel -->
+            <div id="auth-panel-token" class="auth-panel hidden">
+                <p class="auth-desc">
+                    Paste your <code>user_id</code> and
+                    <code>user_auth_token</code> from Qobuz web player
+                    localStorage (<kbd>F12</kbd> → Application → Local
+                    Storage → <code>https://play.qobuz.com</code>).
+                </p>
+                <div class="compact-split-row">
+                    <div class="form-group">
+                        <label for="setup-user-id">User ID</label>
+                        <input type="text" id="setup-user-id" placeholder="12345678" autocomplete="off" />
+                    </div>
+                    <div class="form-group">
+                        <label for="setup-user-auth-token">User Auth Token</label>
+                        <input type="text" id="setup-user-auth-token" placeholder="Paste token here…" autocomplete="off" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="setup-folder-token">Default Download Folder</label>
+                    <div class="input-browse-wrap">
+                        <input type="text" id="setup-folder-token" placeholder="Qobuz Downloads"
+                            value="Qobuz Downloads" />
+                        <button class="btn-browse" data-target="setup-folder-token" data-tip="Choose folder">
+                            Browse
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="setup-quality-token">Default Quality (auto-fallback on failure)</label>
+                    <select id="setup-quality-token" class="menu-select-target">
+                        <option value="27">Highest Available</option>
+                        <option value="6">Lowest Lossless</option>
+                        <option value="5">MP3 320</option>
+                    </select>
+                </div>
+                <div id="setup-error-token" class="error-msg hidden"></div>
+                <button id="token-btn" class="btn-primary btn-full">
+                    <span id="token-btn-text">Connect with Token</span>
+                    <span id="token-spinner" class="spinner hidden"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================== APP SHELL ======================== -->
+    <div id="app" class="app hidden">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-wrap">
+                    <svg class="app-logo-mark" width="24" height="24" viewBox="0 0 192 192" fill="none"
+                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path stroke="var(--accent)" stroke-linecap="round" stroke-width="8"
+                            d="M140.672 157.486a76.004 76.004 0 0 1-102.464-12.128 76.001 76.001 0 0 1 107.15-107.15 76.004 76.004 0 0 1 12.128 102.464" />
+                        <path stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round"
+                            stroke-miterlimit="15" stroke-width="8"
+                            d="M124.807 142.105a54.364 54.364 0 1 1 17.296-17.296" />
+                        <path stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round"
+                            stroke-miterlimit="15" stroke-width="8"
+                            d="M95.997 117.193c11.705 0 21.193-9.488 21.193-21.193 0-11.704-9.488-21.193-21.193-21.193-11.704 0-21.193 9.489-21.193 21.193 0 11.705 9.489 21.193 21.193 21.193Z" />
+                        <path fill="var(--accent)" stroke="var(--accent)" stroke-linecap="round"
+                            stroke-linejoin="round" stroke-miterlimit="15" stroke-width="3.799"
+                            d="M95.997 98.103a2.103 2.103 0 1 0 0-4.205 2.103 2.103 0 0 0 0 4.205Z" />
+                        <path stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round"
+                            stroke-miterlimit="15" stroke-width="12" d="m121.193 121.196 41.871 41.625" />
+                    </svg>
+                    <span>Qobuz<strong>DL</strong></span>
+                </div>
+                <div class="settings-wrapper">
+                    <div class="sidebar-header-actions">
+                        <button type="button" id="theme-toggle" class="sidebar-theme-switch" role="switch"
+                            aria-checked="false" aria-label="Switch to light mode" data-tip="Dark mode"
+                            data-tip-placement="bottom">
+                            <span class="sidebar-theme-switch-icons" aria-hidden="true">
+                                <svg class="sidebar-theme-switch-icon sidebar-theme-switch-icon--sun" width="11"
+                                    height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="4" />
+                                    <path
+                                        d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                                </svg>
+                                <svg class="sidebar-theme-switch-icon sidebar-theme-switch-icon--moon" width="11"
+                                    height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                                </svg>
+                            </span>
+                            <span class="sidebar-theme-switch-thumb" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" id="lucky-toggle-btn" class="sidebar-icon-btn lucky-toggle-btn"
+                            aria-expanded="false" aria-controls="lucky-panel" data-tip="Show lucky search"
+                            data-tip-placement="bottom" aria-label="Show lucky search">
+                            <svg class="lucky-toggle-icon lucky-toggle-icon--clover" width="15" height="15"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M16.17 7.83 2 22" />
+                                <path
+                                    d="M4.02 12a2.827 2.827 0 1 1 3.81-4.17A2.827 2.827 0 1 1 12 4.02a2.827 2.827 0 1 1 4.17 3.81A2.827 2.827 0 1 1 19.98 12a2.827 2.827 0 1 1-3.81 4.17A2.827 2.827 0 1 1 12 19.98a2.827 2.827 0 1 1-4.17-3.81A1 1 0 1 1 4 12" />
+                                <path d="m7.83 7.83 8.34 8.34" />
+                            </svg>
+                            <svg class="lucky-toggle-icon lucky-toggle-icon--close hidden" width="15" height="15"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                        <button type="button" id="report-issue-btn" class="sidebar-icon-btn report-issue-btn"
+                            data-tip="Send feedback" aria-label="Send feedback">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 9v4" />
+                                <path d="M12 17h.01" />
+                                <path
+                                    d="M10.3 3.84 1.82 18a2 2 0 0 0 1.72 3h16.92a2 2 0 0 0 1.72-3L13.7 3.84a2 2 0 0 0-3.4 0z" />
+                            </svg>
+                        </button>
+                        <button type="button" id="settings-gear-btn" class="sidebar-icon-btn settings-gear-btn"
+                            data-tip="Settings">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3" />
+                                <path
+                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <!-- Popovers: positioned under .sidebar-logo (full row width) so wide panels are not clipped by .app overflow -->
+                <div id="settings-popover" class="settings-popover hidden">
+                        <div class="settings-popover-header">
+                            <span>Settings</span>
+                            <button id="settings-popover-close" class="btn-ghost btn-sm">
+                                ✕
+                            </button>
+                        </div>
+                        <div class="settings-section">
+                            <span class="settings-section-label">Account</span>
+                            <button id="settings-reauth-btn" class="btn-secondary btn-full">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                                <span id="settings-reauth-text">Re-login with Qobuz</span>
+                                <span id="settings-reauth-spinner" class="spinner hidden"></span>
+                            </button>
+                            <p class="settings-hint">
+                                Returns to the in-app login options. Use this to fix
+                                auth issues or switch accounts.
+                            </p>
+                        </div>
+
+                        <div class="settings-section">
+                            <span class="settings-section-label">Updates</span>
+                            <p id="settings-app-version" class="settings-hint settings-app-version">
+                                Version …
+                            </p>
+                            <button id="settings-check-updates-btn" type="button" class="btn-secondary btn-full">
+                                Check for updates
+                            </button>
+                            <p class="settings-hint">
+                                Compares this app to the latest GitHub release. Windows EXE can update in one click.
+                            </p>
+                            <div id="settings-update-feedback" class="feedback-msg hidden"></div>
+                        </div>
+
+                        <div class="settings-danger">
+                            <button id="settings-purge-btn" class="btn-danger">
+                                Purge Download Database
+                            </button>
+                            <span class="settings-hint">Clears the local record of downloaded files.
+                                Re-downloads won't be skipped.</span>
+                            <div id="settings-popover-feedback" class="feedback-msg hidden"></div>
+                        </div>
+                    </div>
+                    <div id="issue-report-popover" class="issue-report-popover hidden" role="dialog"
+                        aria-labelledby="issue-report-heading" aria-hidden="true">
+                        <div class="settings-popover-header issue-report-header">
+                            <span id="issue-report-heading">Send Feedback</span>
+                            <div class="issue-report-header-actions">
+                                <button id="issue-report-history-btn" type="button"
+                                    class="btn-ghost btn-sm issue-report-icon-btn issue-report-history-btn"
+                                    aria-label="Sent feedback history" data-tip="History">
+                                    <span id="issue-report-open-count" class="issue-report-open-count hidden"
+                                        aria-hidden="true"></span>
+                                    <span class="issue-report-history-btn-icon issue-report-history-btn-icon--history"
+                                        aria-hidden="true">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                                            <path d="M3 3v5h5" />
+                                            <path d="M12 7v5l4 2" />
+                                        </svg>
+                                    </span>
+                                    <span class="issue-report-history-btn-icon issue-report-history-btn-icon--back hidden"
+                                        aria-hidden="true">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="m12 19-7-7 7-7" />
+                                            <path d="M19 12H5" />
+                                        </svg>
+                                    </span>
+                                </button>
+                                <button id="issue-report-close" class="btn-ghost btn-sm" aria-label="Close issue report">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                        <div id="issue-report-main" class="issue-report-main">
+                            <div class="settings-section">
+                                <textarea id="issue-report-message" class="issue-report-textarea" rows="6"
+                                    maxlength="2000" placeholder="Explain what happened..."></textarea>
+                                <div id="issue-report-feedback" class="feedback-msg hidden"></div>
+                            </div>
+                            <div class="issue-report-actions">
+                                <button id="issue-report-log-preview-btn" type="button"
+                                    class="btn-ghost btn-sm issue-report-icon-btn issue-report-log-preview-btn"
+                                    aria-label="Preview session log"
+                                    data-tip="Preview session log (attached when sending if enabled below)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M15 12h-5" />
+                                        <path d="M15 8h-5" />
+                                        <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+                                        <path
+                                            d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" />
+                                    </svg>
+                                </button>
+                                <span class="issue-report-actions-spacer"></span>
+                                <button id="issue-report-open" class="btn-primary btn-sm issue-report-open-send"
+                                    type="button" disabled>
+                                    <span class="issue-report-send-label">Send</span>
+                                    <span class="issue-report-send-spinner spinner hidden" aria-hidden="true"></span>
+                                    <span class="issue-report-send-check" aria-hidden="true">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M20 6 9 17l-5-5" />
+                                        </svg>
+                                    </span>
+                                </button>
+                            </div>
+                            <div class="issue-report-popover-resize" aria-hidden="true"></div>
+                        </div>
+                        <div id="issue-report-history-panel" class="issue-report-history-panel hidden"
+                            aria-labelledby="issue-report-heading">
+                            <div class="issue-report-history-head">
+                                <p id="issue-report-history-hint" class="issue-report-history-hint">Review feedback or
+                                    mark issues as resolved.</p>
+                            </div>
+                            <div class="issue-report-history-body">
+                                <div id="issue-report-history-list" class="issue-report-history-list" role="list"></div>
+                                <p id="issue-report-history-empty" class="issue-report-history-empty hidden">No feedback
+                                    sent from this device yet.</p>
+                            </div>
+                            <div class="issue-report-popover-resize" aria-hidden="true"></div>
+                        </div>
+                    </div>
+            </div>
+
+            <div class="sidebar-search">
+                <div id="issue-report-logs-modal" class="issue-report-logs-modal hidden" role="dialog"
+                    aria-modal="true" aria-labelledby="issue-report-logs-modal-title" aria-hidden="true">
+                    <div class="issue-report-logs-modal-backdrop" data-logs-modal-dismiss="1" tabindex="-1">
+                    </div>
+                    <div class="issue-report-logs-modal-panel">
+                        <div class="issue-report-logs-modal-head">
+                            <span id="issue-report-logs-modal-title" class="issue-report-logs-modal-title">Session
+                                log</span>
+                            <button type="button" id="issue-report-logs-modal-close"
+                                class="btn-ghost btn-sm issue-report-logs-modal-close-x" aria-label="Close">✕</button>
+                        </div>
+                        <p id="issue-report-logs-modal-loading" class="issue-report-logs-modal-loading hidden">
+                            Loading…</p>
+                        <pre id="issue-report-logs-modal-body" class="issue-report-logs-modal-body"
+                            aria-label="Log contents"></pre>
+                        <div class="issue-report-logs-modal-footer">
+                            <div id="issue-report-logs-modal-footer-logs" class="issue-report-logs-modal-footer-left">
+                                <label class="issue-report-logs-include-label">
+                                    <input type="checkbox" id="issue-report-logs-include" checked />
+                                    <span>Include this log when sending feedback</span>
+                                </label>
+                            </div>
+                            <div id="issue-report-logs-modal-footer-feedback"
+                                class="issue-report-logs-modal-footer-left hidden">
+                                <span id="issue-report-feedback-detail-status" class="feedback-detail-status-pill"
+                                    role="status"></span>
+                            </div>
+                            <button type="button" class="btn-primary btn-sm" id="issue-report-logs-modal-done">
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card search-bar-card">
+                    <div class="search-row" id="search-row">
+                        <input type="text" id="search-query" placeholder="Search Qobuz…" class="search-input" />
+                        <select id="search-type" class="search-type-select menu-select-target">
+                            <option value="album">Albums</option>
+                            <option value="track">Tracks</option>
+                            <option value="artist">Artists</option>
+                            <option value="playlist">Playlists</option>
+                        </select>
+                        <button id="search-btn" class="btn-primary btn-search" disabled>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m21 21-4.34-4.34" />
+                                <circle cx="11" cy="11" r="8" />
+                            </svg>
+                        </button>
+                        <button type="button" id="search-artist-back"
+                            class="search-artist-back-overlay hidden"
+                            data-tip="Back to artist search" aria-label="Back to artist search">
+                            ← Artists
+                        </button>
+                    </div>
+                    <div class="search-sort-row">
+                        <label for="search-sort" class="inline-label">Sort</label>
+                        <select id="search-sort" class="menu-select-target" data-tip="Default is Relevance (catalog/popularity order). Newest sorts by release date. Opening an artist uses whichever option is currently selected — it does not switch to Newest.">
+                            <option value="relevance" selected>Relevance</option>
+                            <option value="newest">Newest first</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="lucky-panel" class="card lucky-card hidden" role="region" aria-label="Lucky search">
+                    <div class="search-options-row">
+                        <label for="lucky-number" class="inline-label">Amount</label>
+                        <input type="range" id="lucky-number" min="1" max="25" value="1" class="range-input" />
+                        <span id="lucky-number-val" class="range-val">1</span>
+                        <div class="lucky-sep"></div>
+                        <button type="button" id="lucky-btn" class="btn-secondary btn-lucky">Lucky to Queue</button>
+                    </div>
+                </div>
+
+                <div class="sidebar-results-scroll">
+                    <div id="search-results-container" class="hidden">
+                        <div class="results-header">
+                            <span id="results-count"></span>
+                        </div>
+                        <div id="search-results" class="results-grid"></div>
+                    </div>
+
+                    <div id="search-empty" class="empty-state hidden">
+                        <p>No results found</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-status">
+                <div class="status-indicator">
+                    <span id="status-dot" class="status-dot disconnected"></span>
+                    <span id="status-label">Disconnected</span>
+                </div>
+                <button id="monero-btn" class="monero-btn" data-tip="Donate Monero">
+                    <svg width="15" height="15" viewBox="-200 -200 4156 4156" xmlns="http://www.w3.org/2000/svg" style="overflow: visible;">
+                        <!-- Background circle (Transparent by default, White on hover) -->
+                        <path class="xmr-bg-circle" d="M4128,2249.81C4128,3287,3287.26,4127.86,2250,4127.86S372,3287,372,2249.81,1212.76,371.75,2250,371.75,4128,1212.54,4128,2249.81Z" transform="translate(-371.96 -371.75)" fill="transparent"/>
+                        <!-- Top part (Gray by default, orange on hover) -->
+                        <path class="xmr-bg-top" d="M2250,371.75c-1036.89,0-1879.12,842.06-1877.8,1878,0.26,207.26,33.31,406.63,95.34,593.12h561.88V1263L2250,2483.57,3470.52,1263v1579.9h562c62.12-186.48,95-385.85,95.37-593.12C4129.66,1212.76,3287,372,2250,372Z" transform="translate(-371.96 -371.75)" fill="#4d4d4d"/>
+                        <!-- Bottom part (Permanent gray) -->
+                        <path class="xmr-bg-bottom" d="M1969.3,2764.17l-532.67-532.7v994.14H1029.38l-384.29.07c329.63,540.8,925.35,902.56,1604.91,902.56S3525.31,3766.4,3855,3225.6H3063.25V2231.47l-532.7,532.7-280.61,280.61-280.62-280.61h0Z" transform="translate(-371.96 -371.75)" fill="#4d4d4d"/>
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <!-- -------- DOWNLOAD TAB -------- -->
+            <section id="tab-download" class="tab-panel active">
+                <div class="card dl-options-card">
+                    <button class="collapse-toggle" id="dl-options-toggle" aria-expanded="false">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                        Download Options
+                    </button>
+                    <div id="dl-options-body" class="collapse-body dl-options-panel hidden">
+                        <div class="options-grid">
+                            <div class="form-group">
+                                <label for="dl-quality">Quality (auto-fallback on
+                                    failure)</label>
+                                <select id="dl-quality" class="menu-select-target">
+                                    <option value="27">
+                                        Highest Available
+                                    </option>
+                                    <option value="6">
+                                        Lowest Lossless
+                                    </option>
+                                    <option value="5">MP3 320</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dl-directory">Output Folder</label>
+                                <div class="input-browse-wrap">
+                                    <input type="text" id="dl-directory" placeholder="Use default from settings" />
+                                    <button class="btn-browse" data-target="dl-directory" data-tip="Choose folder">
+                                        Browse
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-group compact-runtime-row">
+                                <div class="compact-number-field">
+                                    <label for="dl-max-workers">Parallel Downloads</label>
+                                    <input type="number" id="dl-max-workers" min="1" max="12" value="1" />
+                                </div>
+                                <div class="compact-number-field">
+                                    <label for="dl-delay-seconds">Delay Between Tracks (s)</label>
+                                    <input type="number" id="dl-delay-seconds" min="0" max="30" value="0" />
+                                </div>
+                            </div>
+                            <div class="options-separator"></div>
+                            <div class="form-group">
+                                <div class="format-label">
+                                    <label for="dl-folder-format">Folder Format</label>
+                                    <span class="format-help-icon" id="folder-format-help" role="button"
+                                        tabindex="0" data-tip="Format help" aria-expanded="false"
+                                        aria-controls="folder-format-tooltip">ⓘ</span>
+                                </div>
+                                <div class="format-tooltip" id="folder-format-tooltip">
+                                    <div class="fmt-tooltip-title">📁 Folder Format Variables</div>
+                                    <div class="fmt-vars-scroll">
+                                        <table class="fmt-vars-table">
+                                            <tr>
+                                                <td><code>{artist}</code></td>
+                                                <td>Album artist (fallback display name)</td>
+                                                <td class="fmt-example">Bastille</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{album}</code></td>
+                                                <td>Album title (with version if present)</td>
+                                                <td class="fmt-example">Bad Blood X (10th Anniversary Edition)</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{album_title_base}</code></td>
+                                                <td>Album title only (no version suffix)</td>
+                                                <td class="fmt-example">Bad Blood X</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{year}</code></td>
+                                                <td>Release year</td>
+                                                <td class="fmt-example">2013</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{release_date}</code></td>
+                                                <td>Full release date</td>
+                                                <td class="fmt-example">2013-03-04</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{label}</code></td>
+                                                <td>Record label</td>
+                                                <td class="fmt-example">UMC (Universal Music Catalogue)</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{barcode}</code></td>
+                                                <td>UPC/Barcode</td>
+                                                <td class="fmt-example">0602458674385</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{disc_count}</code></td>
+                                                <td>Total disc count</td>
+                                                <td class="fmt-example">2</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{track_count}</code></td>
+                                                <td>Total track count</td>
+                                                <td class="fmt-example">33</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{bit_depth}</code></td>
+                                                <td>Audio bit depth</td>
+                                                <td class="fmt-example">24</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{sampling_rate}</code></td>
+                                                <td>Sample rate in kHz</td>
+                                                <td class="fmt-example">96.0</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{format}</code></td>
+                                                <td>Container format</td>
+                                                <td class="fmt-example">FLAC</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Structure Templates</div>
+                                    <div class="fmt-templates">
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="/Bastille/Bad Blood X (10th Anniversary Edition)">{artist}/{album}</span>
+                                            <span class="fmt-template-badge" data-tip="Default format for Plex">
+                                                <img src="/gui/plex.png" alt="Plex" />
+                                            </span>
+                                        </div>
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="/Bastille - Bad Blood X (10th Anniversary Edition) (2013)">{artist} - {album} ({year})</span>
+                                        </div>
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="/Bastille/Bad Blood X (10th Anniversary Edition) (2013) [24B-96.0kHz]">{artist}/{album} ({year}) [{bit_depth}B-{sampling_rate}kHz]</span>
+                                        </div>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Builder</div>
+                                    <div class="fmt-builder-wrap">
+                                        <div class="fmt-builder-input-container">
+                                            <div class="fmt-builder-highlights"></div>
+                                            <input type="text" class="fmt-builder-input" spellcheck="false" placeholder="Type format or click variables..." data-target="dl-folder-format" />
+                                        </div>
+                                        <button type="button" class="fmt-builder-apply" data-tip="Apply format" disabled>
+                                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                        </button>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Preview</div>
+                                    <div class="fmt-preview-output fmt-preview-placeholder"
+                                        id="folder-format-preview"
+                                        data-placeholder="Hover a template or type in builder">Hover a template or type in builder</div>
+                                </div>
+                                <div class="input-reset-wrap">
+                                    <input type="text" id="dl-folder-format"
+                                        placeholder="{artist}/{album}" />
+                                    <button class="btn-reset" data-reset="dl-folder-format"
+                                        data-default="{artist}/{album}"
+                                        data-tip="Reset to default">
+                                        ↺
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div class="format-label">
+                                    <label for="dl-track-format">Track Format</label>
+                                    <span class="format-help-icon" id="track-format-help" role="button" tabindex="0"
+                                        data-tip="Format help" aria-expanded="false"
+                                        aria-controls="track-format-tooltip">ⓘ</span>
+                                </div>
+                                <div class="format-tooltip" id="track-format-tooltip">
+                                    <div class="fmt-tooltip-title">🎵 Track Format Variables</div>
+                                    <div class="fmt-vars-scroll">
+                                        <table class="fmt-vars-table">
+                                            <tr>
+                                                <td><code>{tracknumber}</code></td>
+                                                <td>Track number</td>
+                                                <td class="fmt-example">08</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{tracktitle}</code></td>
+                                                <td>Track title (with version if present)</td>
+                                                <td class="fmt-example">Icarus (Dan's Bedroom Demo)</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{track_title_base}</code></td>
+                                                <td>Title with metadata tags stripped (remaster, explicit, album version, etc.); keeps feat. credits and subtitles like (Hey Oh) or (Live)</td>
+                                                <td class="fmt-example">Snow (Hey Oh) (feat. Jane)</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{artist}</code></td>
+                                                <td>Track artist (fallback album artist)</td>
+                                                <td class="fmt-example">Bastille</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{albumartist}</code></td>
+                                                <td>Primary album artist</td>
+                                                <td class="fmt-example">Bastille</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{album}</code></td>
+                                                <td>Album title</td>
+                                                <td class="fmt-example">Bad Blood X (10th Anniversary Edition)</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{year}</code></td>
+                                                <td>Release year</td>
+                                                <td class="fmt-example">2013</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{bit_depth}</code></td>
+                                                <td>Audio bit depth</td>
+                                                <td class="fmt-example">24</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{sampling_rate}</code></td>
+                                                <td>Sample rate in kHz</td>
+                                                <td class="fmt-example">96.0</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{version}</code></td>
+                                                <td>Album version (if any)</td>
+                                                <td class="fmt-example">10th Anniversary Edition</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{disc_number}</code></td>
+                                                <td>Disc number (zero-padded)</td>
+                                                <td class="fmt-example">02</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{disc_number_unpadded}</code></td>
+                                                <td>Disc number (no padding)</td>
+                                                <td class="fmt-example">2</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{isrc}</code></td>
+                                                <td>Track ISRC</td>
+                                                <td class="fmt-example">GBUM72301353</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Structure Templates</div>
+                                    <div class="fmt-templates">
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="08 - Icarus (Dan's Bedroom Demo).flac">{tracknumber} - {tracktitle}</span>
+                                            <span class="fmt-template-badge" data-tip="Default format for Plex">
+                                                <img src="/gui/plex.png" alt="Plex" />
+                                            </span>
+                                        </div>
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="08. Icarus (Dan's Bedroom Demo).flac">{tracknumber}. {tracktitle}</span>
+                                        </div>
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="08. Bastille - Icarus (Dan's Bedroom Demo).flac">{tracknumber}. {artist} - {tracktitle}</span>
+                                        </div>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Builder</div>
+                                    <div class="fmt-builder-wrap">
+                                        <div class="fmt-builder-input-container">
+                                            <div class="fmt-builder-highlights"></div>
+                                            <input type="text" class="fmt-builder-input" spellcheck="false" placeholder="Type format or click variables..." data-target="dl-track-format" />
+                                        </div>
+                                        <button type="button" class="fmt-builder-apply" data-tip="Apply format" disabled>
+                                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                        </button>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Preview</div>
+                                    <div class="fmt-preview-output fmt-preview-placeholder" id="track-format-preview"
+                                        data-placeholder="Hover a template or type in builder">Hover a template or type in builder</div>
+                                </div>
+                                <div class="input-reset-wrap">
+                                    <input type="text" id="dl-track-format" placeholder="{tracknumber} - {tracktitle}" />
+                                    <button class="btn-reset" data-reset="dl-track-format"
+                                        data-default="{tracknumber} - {tracktitle}" data-tip="Reset to default">
+                                        ↺
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="compact-split-row">
+                                <div class="form-group">
+                                    <label for="dl-multiple-disc-prefix" class="format-label" data-tip="The folder name prefix used for each disc when 'Store multi-disc release in one folder' is unchecked. (e.g. 'Disc' creates 'Disc 01', 'Disc 02', or 'CD' creates 'CD 01')">
+                                        Multi-Disc Prefix
+                                    </label>
+                                    <input type="text" id="dl-multiple-disc-prefix" placeholder="Disc" value="Disc" />
+                                </div>
+                                <div class="form-group compact-inline-switch">
+                                    <label class="toggle-label"
+                                        data-tip="Create individual folders per disc (e.g. CD 01, CD 02). If disabled, all tracks from a multi-disc release are stored in a single folder.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-multiple-disc-one-dir" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Individual folder per disc
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div class="format-label">
+                                    <label for="dl-multiple-disc-track-format">Multi-Disc Track Format</label>
+                                    <span class="format-help-icon" id="multi-disc-format-help" role="button" tabindex="0"
+                                        data-tip="Format help" aria-expanded="false"
+                                        aria-controls="multi-disc-format-tooltip">ⓘ</span>
+                                </div>
+                                <div class="format-tooltip" id="multi-disc-format-tooltip">
+                                    <div class="fmt-tooltip-title">💽 Multi-Disc Track Format</div>
+                                    <div class="fmt-vars-scroll">
+                                        <table class="fmt-vars-table">
+                                            <tr>
+                                                <td><code>{disc_number}</code></td>
+                                                <td>Disc index, zero-padded</td>
+                                                <td class="fmt-example">02</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{disc_number_unpadded}</code></td>
+                                                <td>Disc index, no padding</td>
+                                                <td class="fmt-example">2</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{track_number}</code></td>
+                                                <td>Track index, zero-padded</td>
+                                                <td class="fmt-example">08</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{track_title_base}</code></td>
+                                                <td>No edition/remaster parentheses; keeps feat./ft./featuring only</td>
+                                                <td class="fmt-example">Icarus (feat. Jane)</td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>{tracktitle}</code></td>
+                                                <td>Track title with version if any</td>
+                                                <td class="fmt-example">Icarus (Dan's Bedroom Demo)</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Structure Templates</div>
+                                    <div class="fmt-templates">
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="208 - Icarus (Dan's Bedroom Demo).flac">{disc_number_unpadded}{track_number} - {tracktitle}</span>
+                                            <span class="fmt-template-badge" data-tip="Default format for Plex">
+                                                <img src="/gui/plex.png" alt="Plex" />
+                                            </span>
+                                        </div>
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="02.08 - Icarus.flac">{disc_number}.{track_number} - {track_title_base}</span>
+                                        </div>
+                                        <div class="fmt-template-row">
+                                            <span class="fmt-template-chip"
+                                                data-preview="CD2-08 - Icarus.flac">CD{disc_number}-{track_number} - {track_title_base}</span>
+                                        </div>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Builder</div>
+                                    <div class="fmt-builder-wrap">
+                                        <div class="fmt-builder-input-container">
+                                            <div class="fmt-builder-highlights"></div>
+                                            <input type="text" class="fmt-builder-input" spellcheck="false" placeholder="Type format or click variables..." data-target="dl-multiple-disc-track-format" />
+                                        </div>
+                                        <button type="button" class="fmt-builder-apply" data-tip="Apply format" disabled>
+                                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                        </button>
+                                    </div>
+                                    <div class="fmt-tooltip-section">Preview</div>
+                                    <div class="fmt-preview-output fmt-preview-placeholder" id="multi-disc-format-preview"
+                                        data-placeholder="Hover a template or type in builder">Hover a template or type in builder</div>
+                                </div>
+                                <div class="input-reset-wrap">
+                                    <input type="text" id="dl-multiple-disc-track-format"
+                                        placeholder="{disc_number_unpadded}{track_number} - {tracktitle}" />
+                                    <button class="btn-reset" data-reset="dl-multiple-disc-track-format"
+                                        data-default="{disc_number_unpadded}{track_number} - {tracktitle}"
+                                        data-tip="Reset to default">
+                                        ↺
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="toggle-groups">
+                            <div class="toggle-group">
+                                <span class="toggle-group-label">Cover Art</span>
+                                <div class="toggle-group-items">
+                                    <label class="toggle-label"
+                                        data-tip="Embeds the cover image into each audio file's tags. Without this, art is saved only as cover.jpg in the album folder, not inside the tracks themselves.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-embed-art" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Write Art to Tracks
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Downloads the full-resolution master cover image instead of the standard 600×600 web version. Produces a larger file but higher-quality art.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-og-cover" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Full-Res Cover
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Skips all cover art entirely, no folder image and nothing embedded into tracks.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-no-cover" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Skip Cover Art
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="toggle-group">
+                                <span class="toggle-group-label">Behavior</span>
+                                <div class="toggle-group-items">
+                                    <label class="toggle-label"
+                                        data-tip="When a direct CDN download stalls (Akamai), retry with Qobuz native segmented download and optional HTTP range fallback. Requires ffmpeg for FLAC remux.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-segmented-fallback" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Segmented Fallback
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Ignore the local download history and re-download files even if they were previously downloaded.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-no-db" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Force Redownload
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="When off, requests prefer English for reviews and other text metadata. When on, the API follows your Qobuz account language (Accept-Language is not forced).">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-native-lang" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Native metadata language
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Skip writing a .m3u playlist file after album or playlist downloads. When off (default), each finished album/playlist folder gets an .m3u for media players.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-no-m3u" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Skip Playlist File
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="After each lossless download, convert FLAC to Apple Lossless (ALAC) .m4a via ffmpeg, then remove the FLAC. Requires ffmpeg on PATH. Ignored for MP3.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-convert-alac" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Convert FLAC to ALAC
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="If the chosen quality tier isn't available for a release, cancel instead of automatically retrying at a lower quality.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-no-fallback" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Strict Quality
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Rewrites each finished FLAC so the STREAMINFO MD5 checksum matches the actual audio data. Useful for strict library validators. Requires the `flac` CLI tool.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-fix-md5s" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Fix FLAC MD5
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="toggle-group">
+                                <span class="toggle-group-label">Extras</span>
+                                <div class="toggle-group-items">
+                                    <label class="toggle-label"
+                                        data-tip="Fetch synchronized lyrics from LRCLIB (lrclib.net) and save a .lrc sidecar next to each downloaded track.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-lyrics-enabled" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Synced Lyrics (.lrc)
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Fetch synchronized lyrics from LRCLIB (lrclib.net) and embed them inside each audio file's metadata.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-lyrics-embed-metadata" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Embedded Lyrics
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="Writes Digital Booklet.txt in each album folder: editorial text, credits/copyright when present, and a full track list (separate from any PDF booklet download).">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-digital-booklet" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Digital Booklet (.txt)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="toggle-group hidden" id="dl-artist-section">
+                                <span class="toggle-group-label">Artist / Discography</span>
+                                <div class="toggle-group-items">
+                                    <label class="toggle-label"
+                                        data-tip="Recommended: Automatically filters out duplicate editions, deluxe releases, and bonus versions when downloading an artist's discography.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-smart-discography" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Smart Discography
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="When downloading an artist, skip singles, EPs, and various-artist compilations, only full albums are included (Removal estimation cannot be inferred before downloading starts).">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-albums-only" />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Albums Only
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="toggle-group">
+                                <span class="toggle-group-label">Metadata titles</span>
+                                <div class="toggle-group-items">
+                                    <label class="toggle-label"
+                                        data-tip="Plain TITLE tag: core title plus feat credits only, no edition parentheses or track numbers from filenames. Off: catalog title (with version field).">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-meta-title-from-track-format" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Plain track metadata title
+                                    </label>
+                                    <label class="toggle-label"
+                                        data-tip="The embedded metadata title for albums. On: your folder format segment. Off: Qobuz album title.">
+                                        <span class="toggle-switch">
+                                            <input type="checkbox" id="dl-meta-album-from-folder-format" checked />
+                                            <span class="toggle-knob"></span>
+                                        </span>
+                                        Album metadata title from format
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="toggle-group">
+                                <span class="toggle-group-label">Tag Controls (checked = write tag)</span>
+                                <!-- Per-tag data-tip; use data-tip-icon="/gui/....png" for Plex (or future Jellyfin/Kodi assets under /gui/). -->
+                                <div class="tag-checkbox-grid">
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Track Title
+Plex uses this as the primary song name everywhere. Disabling it often yields blank titles or poor matching."><input type="checkbox" id="dl-tag-track-title" checked /> Track Title</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Track Artist
+Per-track performer credits; Plex uses this for artist filters, track rows, and VA albums."><input type="checkbox" id="dl-tag-track-artist" checked /> Track Artist</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Album Title
+Album identity and grouping. Without it, Plex struggles to merge tracks into the correct album."><input type="checkbox" id="dl-tag-album-title" checked /> Album Title</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Track Number
+Playback order within a disc. Disabling can scramble track order in Plex."><input type="checkbox" id="dl-tag-track-number" checked /> Track Number</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Release Date
+Sorting, filters, and “year” views. Plex reads this for timeline context."><input type="checkbox" id="dl-tag-release-date" checked /> Release Date</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Album Artist
+Album-level artist (especially important for compilations and album pages)."><input type="checkbox" id="dl-tag-album-artist" checked /> Album Artist</label>
+                                    <label class="tag-check" data-tip="Barcode or UPC (product identifier) written to the file tags."><input type="checkbox" id="dl-tag-upc" checked /> UPC/Barcode</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Composer
+Composer credits where Plex surfaces classical or composer-driven libraries."><input type="checkbox" id="dl-tag-composer" checked /> Composer</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Copyright
+(P)/(C) lines; some clients and compliance-style views display this."><input type="checkbox" id="dl-tag-copyright" checked /> Copyright</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Disc Number
+Multi-disc releases; Plex uses this to split and order discs."><input type="checkbox" id="dl-tag-disc-number" checked /> Disc Number</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Genre
+Genre filters and browsing; Plex maps genres from this tag."><input type="checkbox" id="dl-tag-genre" checked /> Genre</label>
+                                    <label class="tag-check" data-tip="International Standard Recording Code for this track."><input type="checkbox" id="dl-tag-isrc" checked /> ISRC</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Explicit
+Parental / explicit flags; without it Plex cannot reliably show explicit badges."><input type="checkbox" id="dl-tag-explicit" checked /> Explicit</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Media Type
+Release-type and medium metadata; Plex uses this so singles, EPs, albums, mixtapes, and similar land in the right browsing buckets."><input type="checkbox" id="dl-tag-media-type" checked /> Media Type</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Label
+Record label or publisher name. Plex reads this for album metadata and label-based browsing where available."><input type="checkbox" id="dl-tag-label" checked /> Label</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Disc Total
+How many discs Plex expects for the album; helps multi-disc completeness."><input type="checkbox" id="dl-tag-disc-total" checked /> Disc Total</label>
+                                    <label class="tag-check" data-tip-icon="/gui/plex.png" data-tip="Track Total
+Total tracks on the album; Plex uses this for completeness and ordering hints."><input type="checkbox" id="dl-tag-track-total" checked /> Track Total</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card" id="url-card">
+                    <label class="field-label">Add URLs</label>
+                    <div class="url-input-row">
+                        <input type="text" id="dl-url-input" placeholder="Paste a Qobuz URL and press Enter…"
+                            autocomplete="off" />
+                        <button id="dl-url-add" class="btn-accent" data-tip="Add URL">
+                            +
+                        </button>
+                        <div class="view-mode-btns">
+                            <button id="btn-mode-card" class="btn-mode active" data-tip="Card view">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                                </svg>
+                            </button>
+                            <button id="btn-mode-text" class="btn-mode" data-tip="Text view">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="3" y1="6" x2="21" y2="6" />
+                                    <line x1="3" y1="12" x2="21" y2="12" />
+                                    <line x1="3" y1="18" x2="15" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Card mode: drag-drop zone with cards inside -->
+                    <div id="dl-queue" class="dl-queue" ondragover="
+                                event.preventDefault();
+                                this.classList.add('drag-over');
+                            " ondragleave="this.classList.remove('drag-over')" ondrop="
+                                event.preventDefault();
+                                this.classList.remove('drag-over');
+                                window._handleDrop(event);
+                            ">
+                        <div id="dl-queue-empty" class="dl-queue-empty">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            <span>Drag &amp; drop URLs here, or paste
+                                above</span>
+                        </div>
+                        <div id="dl-queue-start-feedback" class="dl-queue-start-feedback hidden" role="alert">
+                            <span id="dl-queue-start-feedback-badge" class="dl-error-badge">⚠ Download issue</span>
+                            <div id="dl-queue-start-feedback-msg" class="dl-error-message"></div>
+                        </div>
+                    </div>
+                    <!-- Text mode: plain textarea (hidden by default) -->
+                    <textarea id="dl-urls" class="dl-urls-text hidden" rows="3"
+                        placeholder="https://play.qobuz.com/album/...&#10;https://play.qobuz.com/track/..."
+                        ondragover="event.preventDefault()" ondrop="
+                                event.preventDefault();
+                                window._handleDropText(event);
+                            "></textarea>
+                    <div class="action-row">
+                        <div class="dl-download-buttons">
+                            <button id="dl-btn" class="btn-primary dl-btn-split" data-state="idle">
+                                <span class="dl-btn-body">
+                                    <svg id="dl-btn-icon" width="15" height="15" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2.5"
+                                        stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                    </svg>
+                                    <span id="dl-btn-text">Start Download</span>
+                                </span>
+                                <span id="dl-btn-badge" class="dl-btn-badge hidden" aria-live="polite"></span>
+                            </button>
+                        </div>
+                        <div id="dl-progress-wrap" class="dl-progress-wrap hidden">
+                            <div class="dl-progress-bar">
+                                <div id="dl-progress-fill" class="dl-progress-fill"></div>
+                            </div>
+                            <span id="dl-progress-label" class="dl-progress-label">0 / 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="log-container" id="dl-track-status-container">
+                    <div class="log-header dl-history-header">
+                        <div class="dl-history-segment" role="tablist" aria-label="History source">
+                            <button type="button" role="tab" id="dl-history-tab-all"
+                                class="dl-history-segment-btn dl-history-segment-btn--all is-active"
+                                aria-selected="true" tabindex="0">Download history</button>
+                            <button type="button" role="tab" id="dl-history-tab-errors"
+                                class="dl-history-segment-btn dl-history-segment-btn--errors dl-history-segment-split"
+                                aria-selected="false" tabindex="-1">
+                                <span class="dl-history-segment-body">Error history</span>
+                                <span id="dl-history-errors-count" class="dl-history-errors-count hidden"
+                                    aria-live="polite"></span>
+                            </button>
+                        </div>
+                        <div class="dl-clear-history-shell">
+                            <button type="button" class="btn-ghost btn-sm" id="dl-clear-track-status"
+                                aria-expanded="false" aria-haspopup="dialog"
+                                aria-controls="dl-clear-history-confirm">Clear</button>
+                            <div id="dl-clear-history-confirm" class="dl-clear-history-confirm hidden" role="dialog"
+                                aria-labelledby="dl-clear-history-confirm-heading" aria-modal="true" tabindex="-1">
+                                <p id="dl-clear-history-confirm-heading" class="dl-clear-history-confirm-heading"
+                                    role="heading" aria-level="2">Clear the entire download history?</p>
+                                <p class="dl-clear-history-confirm-detail">This cannot be undone. (This can cause UI bugs
+                                    during active downloads.)</p>
+                                <div class="dl-clear-history-confirm-actions">
+                                    <button type="button" class="btn-ghost btn-sm"
+                                        id="dl-clear-history-cancel">Cancel</button>
+                                    <button type="button" class="btn-danger btn-sm"
+                                        id="dl-clear-history-confirm-do">Clear all</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="track-status-list" id="dl-track-status"></div>
+                </div>
+
+
+            </section>
+
+
+        </main>
+
+
+        <!-- ── Settings popover backdrop ── -->
+        <div id="settings-backdrop" class="settings-backdrop hidden"></div>
+
+        <!-- ── Donation Popover (Tooltip style) ── -->
+        <div id="donation-popover" class="donation-popover hidden">
+            <div class="donation-popover-header">
+                <span>Support GUI Dev</span>
+            </div>
+            <div class="qr-container-mini">
+                <img src="/gui/monero_qr.png" alt="Monero QR" class="qr-image" />
+            </div>
+            <div class="address-box-mini">
+                <div class="address-text-mini" id="monero-address">8BuFrF3pnaFDXZLkzNX3NKG7hdMr1YqZaAvasSyfSbJnLadCUgXuJQQVigeBBAZdL5NTRiUcPYNVTV2gUWa7zuhuMRVNwt9</div>
+                <button id="copy-address-btn" class="btn-primary btn-sm btn-full">
+                    <span id="copy-text">Copy Address</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search lyrics (LRCLIB) | panel above download history; preview docks below with its own close -->
+        <div id="lyric-search-popover" class="lyric-search-popover hidden" role="dialog"
+            aria-labelledby="lyric-search-heading" aria-hidden="true">
+            <div class="lyric-search-popover-inner">
+                <div class="lyric-search-head">
+                    <h2 id="lyric-search-heading">Search lyrics</h2>
+                    <div class="lyric-output-toggles" aria-label="Lyric output options">
+                        <label class="lyric-output-toggle"
+                            data-tip="Save attached lyrics as a .lrc sidecar next to the audio file. Mirrors Download settings.">
+                            <span class="toggle-switch lyric-output-switch">
+                                <input type="checkbox" id="lyric-output-lrc" />
+                                <span class="toggle-knob"></span>
+                            </span>
+                            .lrc
+                        </label>
+                        <label class="lyric-output-toggle"
+                            data-tip="Embed attached lyrics inside the audio file metadata. Mirrors Download settings.">
+                            <span class="toggle-switch lyric-output-switch">
+                                <input type="checkbox" id="lyric-output-metadata" />
+                                <span class="toggle-knob"></span>
+                            </span>
+                            Embed
+                        </label>
+                    </div>
+                    <button type="button" id="lyric-search-close" class="btn-ghost btn-sm lyric-search-close"
+                        aria-label="Close">✕</button>
+                </div>
+                <div class="lyric-search-body">
+                    <div class="lyric-search-col lyric-search-col--form">
+                        <div class="lyric-search-fields">
+                            <div class="form-group">
+                                <label for="lyric-search-title">Title</label>
+                                <input type="text" id="lyric-search-title" autocomplete="off" />
+                            </div>
+                            <div class="form-group">
+                                <label for="lyric-search-album">Album</label>
+                                <input type="text" id="lyric-search-album" autocomplete="off" />
+                            </div>
+                            <div class="form-group">
+                                <label for="lyric-search-artist">Artist</label>
+                                <input type="text" id="lyric-search-artist" autocomplete="off" />
+                            </div>
+                            <button type="button" id="lyric-search-submit" class="btn-primary btn-full">Search</button>
+                        </div>
+                        <div id="lyric-search-status" class="lyric-search-status hidden" role="status"></div>
+                    </div>
+                    <div class="lyric-search-col lyric-search-col--results">
+                        <div id="lyric-search-results" class="lyric-search-results" role="listbox"
+                            aria-label="LRCLIB search results"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="lyric-search-preview-panel" class="lyric-search-preview-panel hidden" role="region"
+                aria-labelledby="lyric-search-preview-heading" aria-hidden="true">
+                <div class="lyric-search-head lyric-search-preview-head-row">
+                    <h2 id="lyric-search-preview-heading" class="lyric-search-preview-heading">Lyric preview</h2>
+                    <div class="lyric-search-preview-player" aria-label="Preview playback">
+                        <button type="button" id="lyric-search-preview-play" class="lyric-search-preview-play"
+                            aria-label="Play" disabled>
+                            <svg class="lyric-search-preview-play-icon" width="14" height="14" viewBox="0 0 24 24"
+                                fill="currentColor" aria-hidden="true">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
+                            <svg class="lyric-search-preview-pause-icon hidden" width="14" height="14"
+                                viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                            </svg>
+                        </button>
+                        <span id="lyric-search-preview-cur" class="lyric-search-preview-time">0:00</span>
+                        <input type="range" id="lyric-search-preview-seek" class="lyric-search-preview-seek"
+                            min="0" max="1000" value="0" step="1" disabled aria-label="Seek" />
+                        <span id="lyric-search-preview-dur" class="lyric-search-preview-time">0:00</span>
+                    </div>
+                    <button type="button" id="lyric-search-preview-close" class="btn-ghost btn-sm lyric-search-close"
+                        aria-label="Close lyric preview">✕</button>
+                </div>
+                <audio id="lyric-search-preview-audio" class="hidden" preload="metadata"></audio>
+                <div id="lyric-search-preview" class="lyric-search-preview">
+                    <div id="lyric-search-preview-flag" class="lyric-search-preview-flag hidden" role="status"></div>
+                    <div id="lyric-search-preview-body" class="lyric-search-preview-body"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Attach streamable substitute for purchase-only album slots -->
+        <div id="attach-track-popover" class="lyric-search-popover attach-track-popover hidden" role="dialog"
+            aria-labelledby="attach-track-heading" aria-hidden="true">
+            <div class="lyric-search-popover-inner">
+                <div class="lyric-search-head">
+                    <h2 id="attach-track-heading">Find track replacement</h2>
+                    <button type="button" id="attach-track-close" class="btn-ghost btn-sm lyric-search-close"
+                        aria-label="Close">✕</button>
+                </div>
+                <div class="lyric-search-body attach-track-body">
+                    <div class="lyric-search-col lyric-search-col--form">
+                        <div class="lyric-search-fields">
+                            <p class="attach-track-hint">Search Qobuz for another release of this song.</p>
+                            <div class="form-group">
+                                <label for="attach-track-title">Title</label>
+                                <input type="text" id="attach-track-title" autocomplete="off" placeholder="Track title…" />
+                            </div>
+                            <div class="form-group">
+                                <label for="attach-track-artist">Artist</label>
+                                <input type="text" id="attach-track-artist" autocomplete="off" placeholder="Artist…" />
+                            </div>
+                            <button type="button" id="attach-track-submit" class="btn-primary btn-full">Search</button>
+                        </div>
+                        <div id="attach-track-status" class="lyric-search-status hidden" role="status"></div>
+                    </div>
+                    <div class="lyric-search-col lyric-search-col--results">
+                        <div id="attach-track-results" class="lyric-search-results" role="listbox"
+                            aria-label="Qobuz substitute tracks"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- #app -->
+
+        <!-- Global Tooltip -->
+    <div id="global-tooltip" class="global-tooltip"></div>
+
+    <!-- Styled edit context menu (replaces native menu on text fields; matches global-tooltip look) -->
+    <div id="text-field-context-menu" class="text-field-context-menu hidden" role="menu"
+        aria-hidden="true">
+        <button type="button" class="text-field-context-menu-item" role="menuitem" data-action="cut">Cut</button>
+        <button type="button" class="text-field-context-menu-item" role="menuitem" data-action="copy">Copy</button>
+        <button type="button" class="text-field-context-menu-item" role="menuitem" data-action="paste">Paste</button>
+        <div class="text-field-context-menu-sep" role="separator" aria-hidden="true"></div>
+        <button type="button" class="text-field-context-menu-item" role="menuitem" data-action="selectAll">Select all</button>
+    </div>
+
+    <script src="/gui/js/api/client.js?v=1"></script>
+    <script src="/gui/js/api/extensions.js?v=1"></script>
+    <script src="/gui/js/features/settings/updateBanner.js?v=1"></script>
+    <script src="/gui/js/core/namespace.js?v=1"></script>
+    <script src="/gui/js/core/constants.js?v=1"></script>
+    <script src="/gui/js/core/trackIdentity.js?v=1"></script>
+    <script src="/gui/js/core/format.js?v=1"></script>
+    <script src="/gui/js/core/dom.js?v=1"></script>
+    <script src="/gui/js/core/icons.js?v=1"></script>
+    <script src="/gui/js/features/formatBuilder/formatTooltips.js?v=1"></script>
+    <script src="/gui/js/ui/globalTooltip.js?v=1"></script>
+    <script src="/gui/js/ui/textFieldContextMenu.js?v=1"></script>
+    <script src="/gui/js/ui/menuSelect.js?v=1"></script>
+    <script src="/gui/js/ui/donationPopover.js?v=1"></script>
+    <script src="/gui/js/ui/theme.js?v=4"></script>
+    <script src="/gui/js/ui/collapses.js?v=1"></script>
+    <script src="/gui/js/ui/resetButtons.js?v=1"></script>
+    <script src="/gui/js/ui/popoverPositioning.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lyricOutputSettings.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lrcPreviewParser.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lyricPreviewPlayer.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lyricSearchController.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lyricSearchResults.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lyricAttach.js?v=1"></script>
+    <script src="/gui/js/features/lyrics/lyricSearchModal.js?v=1"></script>
+    <script src="/gui/js/features/status/statusController.js?v=1"></script>
+    <script src="/gui/js/features/setup/authTabs.js?v=1"></script>
+    <script src="/gui/js/features/setup/browseButtons.js?v=1"></script>
+    <script src="/gui/js/features/setup/setupController.js?v=1"></script>
+    <script src="/gui/js/features/settings/settingsForm.js?v=1"></script>
+    <script src="/gui/js/features/settings/downloadOptionsAutosave.js?v=1"></script>
+    <script src="/gui/js/features/settings/coverArtMutex.js?v=1"></script>
+    <script src="/gui/js/features/settings/settingsActions.js?v=1"></script>
+    <script src="/gui/js/features/queue/queueController.js?v=1"></script>
+    <script src="/gui/js/features/download/downloadController.js?v=1"></script>
+    <script src="/gui/js/features/download/downloadProgress.js?v=1"></script>
+    <script src="/gui/js/features/download/queueIssueBadges.js?v=2"></script>
+    <script src="/gui/js/features/download/downloadStatusHandler.js?v=1"></script>
+    <script src="/gui/js/features/download/downloadStartPause.js?v=1"></script>
+    <script src="/gui/js/features/download/sseClient.js?v=1"></script>
+    <script src="/gui/js/features/queue/queueInternals.js?v=1"></script>
+    <script src="/gui/js/features/history/historyController.js?v=1"></script>
+    <script src="/gui/js/features/history/historyVirtualization.js?v=4"></script>
+    <script src="/gui/js/features/history/historyHydratePersist.js?v=3"></script>
+    <script src="/gui/js/features/history/historyFilters.js?v=5"></script>
+    <script src="/gui/js/features/history/historyCardRendering.js?v=2"></script>
+    <script src="/gui/js/features/history/clearHistoryConfirm.js?v=1"></script>
+    <script src="/gui/js/features/replacements/replacementController.js?v=1"></script>
+    <script src="/gui/js/features/replacements/attachTrackPopover.js?v=1"></script>
+    <script src="/gui/js/features/replacements/resolutionButtons.js?v=1"></script>
+    <script src="/gui/js/features/replacements/missingPlaceholder.js?v=1"></script>
+    <script src="/gui/js/features/search/searchController.js?v=1"></script>
+    <script src="/gui/js/ui/feedbackMessage.js?v=1"></script>
+    <script src="/gui/js/features/feedback/issueReportSubsystem.js?v=1"></script>
+    <script src="/gui/app.js?v=101"></script>
+</body>
+
+</html>

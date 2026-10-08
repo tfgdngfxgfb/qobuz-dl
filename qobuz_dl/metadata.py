@@ -1,3 +1,4 @@
+from qobuz_dl.credits import artist_tags, normalize_isrc, performer_credits
 import re
 import os
 import logging
@@ -310,6 +311,7 @@ def tag_flac(
         em_image (bool, optional): Flag to enable embedding the cover image. Defaults to False.
         settings (QobuzDLSettings, optional): Configuration object for user preferences. Defaults to None.
     """
+    settings = settings or QobuzDLSettings()
     audio = FLAC(filename)
 
     if istrack:
@@ -371,6 +373,7 @@ def tag_mp3(filename, root_dir, final_name, d, album, istrack=True, em_image=Fal
         em_image (bool, optional): Flag to enable embedding the cover image. Defaults to False.
         settings (QobuzDLSettings, optional): Configuration object for user preferences. Defaults to None.
     """
+    settings = settings or QobuzDLSettings()
     try:
         audio = id3.ID3(filename)
     except ID3NoHeaderError:
@@ -385,12 +388,10 @@ def tag_mp3(filename, root_dir, final_name, d, album, istrack=True, em_image=Fal
 
     tags = _get_tags_to_add(qobuz_album, qobuz_item, settings=settings)
 
-    # ID3v2.3 stores the year in TYER and only the day and month (DDMM) in TDAT
+    # ID3v2.4 preserves both separate artist values and the complete release date.
     release_date = tags.pop("DATE", "") or ""
-    if release_date[:4].isdigit():
-        audio["TYER"] = id3.TYER(encoding=3, text=release_date[:4])
-        if release_date[5:7].isdigit() and release_date[8:10].isdigit():
-            audio["TDAT"] = id3.TDAT(encoding=3, text=release_date[8:10] + release_date[5:7])
+    if release_date:
+        audio["TDRC"] = id3.TDRC(encoding=3, text=release_date)
 
     # Navidrome and Picard read the release type of MP3 files from this frame
     release_types = tags.pop("RELEASETYPE", None)
@@ -424,7 +425,7 @@ def tag_mp3(filename, root_dir, final_name, d, album, istrack=True, em_image=Fal
     audio.pop("TENC", None)
     audio.pop("TSSE", None)
 
-    audio.save(filename, v2_version=3)
+    audio.save(filename, v2_version=4)
     os.rename(filename, final_name)
 
 
@@ -445,6 +446,7 @@ def _get_tags_to_add(qobuz_album: dict, qobuz_item : dict, settings: QobuzDLSett
     Returns:
         dict: A dictionary mapping standardized tag keys to their corresponding extracted values.
     """
+    settings = settings or QobuzDLSettings()
     tags = dict()
     if not qobuz_album or not qobuz_item:
         return tags
@@ -457,72 +459,7 @@ def _get_tags_to_add(qobuz_album: dict, qobuz_item : dict, settings: QobuzDLSett
         tags["TITLE"] = _get_title_with_version(title=qobuz_item.get("title", ""),
                                                 version=qobuz_item.get("version", ""))
 
-    # Artist Information
-    if not settings.no_album_artist_tag:
-        tags["ALBUMARTIST"] = get_album_artist(qobuz_album)
-        
-    if not settings.no_track_artist_tag:
-        main_artist = qobuz_item.get("performer", {}).get("name", "") or qobuz_album.get("artist", {}).get("name", "")
-        artists = [main_artist] if main_artist else []
-        
-        performers_str = qobuz_item.get("performers", "")
-        if performers_str:
-            for performer_block in performers_str.split(" - "):
-                parts = [p.strip() for p in performer_block.split(", ")]
-                if len(parts) > 1:
-                    name = parts[0]
-                    roles = parts[1:]
-                    
-                    # "Earth, Wind & Fire, MainArtist" is read as "Earth";
-                    # skip such truncated copies of the main artist's name
-                    if main_artist and main_artist.casefold().startswith(name.casefold() + ","):
-                        continue
-
-                    if "FeaturedArtist" in roles or "MainArtist" in roles:
-                        if name.casefold() not in (a.casefold() for a in artists):
-                            artists.append(name)
-
-        # Drop a combined credit such as "A & B" when A and B are also listed
-        # separately, instead of splitting names like "Mumford & Sons".
-        if main_artist and len(artists) > 1:
-            parts = {p.strip().casefold() for p in main_artist.replace(" & ", ",").split(",") if p.strip()}
-            others = {a.casefold() for a in artists[1:]}
-            if len(parts) > 1 and parts <= others:
-                artists.remove(main_artist)
-        
-        if len(artists) == 1:
-            tags["ARTIST"] = artists[0]
-        elif len(artists) > 1:
-            tags["ARTIST"] = artists
-        else:
-            tags["ARTIST"] = ""
-
-    if not settings.no_composer_tag:
-        composers = []
-        performers_str = qobuz_item.get("performers", "")
-        
-        if performers_str:
-            for performer_block in performers_str.split(" - "):
-                parts = [p.strip() for p in performer_block.split(", ")]
-                if len(parts) > 1:
-                    name = parts[0]
-                    roles = parts[1:]
-                    
-                    if "Composer" in roles or "ComposerLyricist" in roles:
-                        if name.casefold() not in (c.casefold() for c in composers):
-                            composers.append(name)
-                            
-        if not composers:
-            main_composer = qobuz_item.get("composer", {}).get("name", "")
-            if main_composer:
-                composers.append(main_composer)
-
-        if len(composers) == 1:
-            tags["COMPOSER"] = composers[0]
-        elif len(composers) > 1:
-            tags["COMPOSER"] = composers
-        else:
-            tags["COMPOSER"] = ""
+    tags.update(artist_tags(qobuz_item, qobuz_album, settings))
 
     # Release Information
     release_date = qobuz_album.get("release_date_original", "")
@@ -532,7 +469,7 @@ def _get_tags_to_add(qobuz_album: dict, qobuz_item : dict, settings: QobuzDLSett
         raw_main_genre = qobuz_album.get("genre", {}).get("name")
         main_genre = LOCAL_GENRE_MAP.get(raw_main_genre, raw_main_genre) if raw_main_genre else None
         
-        raw_genres = qobuz_album.get("genres_list", [])
+        raw_genres = list(qobuz_album.get("genres_list") or [])
         if main_genre:
             if raw_genres:
                 raw_genres[0] = main_genre
@@ -554,7 +491,7 @@ def _get_tags_to_add(qobuz_album: dict, qobuz_item : dict, settings: QobuzDLSett
     if not settings.no_label_tag:
         tags["LABEL"] = re.sub(r'\s+',' ', qobuz_album.get("label", {}).get("name", ""))
     if not settings.no_isrc_tag:
-        tags["ISRC"] = qobuz_item.get("isrc", "")
+        tags["ISRC"] = normalize_isrc(qobuz_item.get("isrc"))
     if not settings.no_upc_tag:
         tags["BARCODE"] = qobuz_album.get("upc", "")
 
@@ -594,17 +531,11 @@ def _get_tags_to_add(qobuz_album: dict, qobuz_item : dict, settings: QobuzDLSett
     ensembles = []
     performers_str = qobuz_item.get("performers", "")
     
-    if performers_str:
-        for performer_block in performers_str.split(" - "):
-            parts = [p.strip() for p in performer_block.split(", ")]
-            if len(parts) > 1:
-                name = parts[0]
-                roles = parts[1:]
-                
-                if "Conductor" in roles:
-                    conductors.append(name)
-                if any(role in roles for role in ["Orchestra", "Ensemble", "Choir"]):
-                    ensembles.append(name)
+    for name, roles in performer_credits(performers_str):
+        if "conductor" in roles:
+            conductors.append(name)
+        if set(roles) & {"orchestra", "ensemble", "choir"}:
+            ensembles.append(name)
 
     if conductors and not getattr(settings, 'no_conductor_tag', False):
         tags["CONDUCTOR"] = conductors if len(conductors) > 1 else conductors[0]

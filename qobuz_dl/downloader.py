@@ -242,6 +242,11 @@ class Download:
         playlist_track_number: int = None, 
         booklet_only: bool = False,
         playlist_as_albums: bool = False,
+        cancel_event=None,
+        abort_stream_event=None,
+        on_track_complete=None,
+        on_release_complete=None,
+        progress_factory=None,
     ):
         """
         Initializes the Download class.
@@ -269,6 +274,12 @@ class Download:
             booklet_only (bool): If True, downloads only the Digital Booklet and cover art, skipping audio.
             playlist_as_albums (bool): If True, downloads playlist tracks into their original album folders.
         """
+        self.cancel_event = cancel_event if cancel_event is not None else abort_event
+        self.abort_event = abort_stream_event if abort_stream_event is not None else self.cancel_event
+        self.external_cancel = cancel_event is not None
+        self.on_track_complete = on_track_complete
+        self.on_release_complete = on_release_complete
+        self.progress_factory = progress_factory
         self.client = client
         self.item_id = item_id
         self.path = path
@@ -426,7 +437,8 @@ class Download:
             
         failed_tracks = 0
         aborted_by_user = False
-        abort_event.clear()
+        if not self.external_cancel:
+            self.abort_event.clear()
 
         # --- SIGINT HIJACKER (Hacker Fix) ---
         # Intercept Ctrl+C to prevent core/cli from brutally killing the process,
@@ -435,7 +447,7 @@ class Download:
         try:
             original_sigint = signal.getsignal(signal.SIGINT)
             def custom_sigint_handler(sig, frame):
-                abort_event.set()
+                self.abort_event.set()
                 raise KeyboardInterrupt
             signal.signal(signal.SIGINT, custom_sigint_handler)
         except Exception:
@@ -447,13 +459,13 @@ class Download:
             if self.settings.no_cover:
                 logger.info(f"{OFF}Skipping cover")
             else:
-                _get_extra(album_meta["image"]["large"], dirn, art_size=self.settings.saved_art_size)
+                _get_extra(album_meta["image"]["large"], dirn, art_size=self.settings.saved_art_size, cancel_event=self.abort_event)
 
             if self.settings.embed_art:
-                _get_extra(album_meta["image"]["large"], dirn, extra=EMB_COVER_NAME, art_size=self.settings.embedded_art_size)
+                _get_extra(album_meta["image"]["large"], dirn, extra=EMB_COVER_NAME, art_size=self.settings.embedded_art_size, cancel_event=self.abort_event)
 
             if "goodies" in album_meta:
-                _download_goodies(album_meta, dirn)
+                _download_goodies(album_meta, dirn, cancel_event=self.abort_event)
                 
             if getattr(self, 'booklet_only', False):
                 safe_print(f"{YELLOW}[*] --booklet-only flag active. Skipping audio tracks.{OFF}")
@@ -469,11 +481,12 @@ class Download:
             with concurrent.futures.ThreadPoolExecutor(max_workers=active_workers) as executor:
                 futures = []
                 for i in album_meta["tracks"]["items"]:
-                    if abort_event.is_set():
+                    if self.cancel_event.is_set():
                         break
                     try:
                         parse = self.client.get_track_url(i["id"], fmt_id=self.quality)
                     except Exception as e:
+                        self._track_failed(i, album_meta, str(e))
                         safe_print(f"{RED}[!] API Error for track {i.get('track_number', 'unknown')} (ID: {i['id']}): {e}{OFF}")
                         safe_print(f"{YELLOW}[*] Skipping track and continuing with the album...{OFF}")
                         count += 1
@@ -489,6 +502,7 @@ class Download:
                             )
                         )
                     else:
+                        self._track_failed(i, album_meta, "No stream URL available")
                         logger.info(f"{OFF}Demo. Skipping")
                         failed_tracks += 1
                     count += 1
@@ -496,11 +510,11 @@ class Download:
                 try:
                     for f in futures:
                         while not f.done():
-                            if abort_event.is_set():
+                            if self.abort_event.is_set():
                                 break
                             time.sleep(0.2)
                             
-                    if not abort_event.is_set():
+                    if not self.abort_event.is_set():
                         for f in futures:
                             try:
                                 res = f.result()
@@ -510,7 +524,7 @@ class Download:
                                 safe_print(f"{RED}[!] Track download failed: {inner_e}{OFF}")
                                 failed_tracks += 1
                 except (KeyboardInterrupt, SystemExit):
-                    abort_event.set()
+                    self.abort_event.set()
                     aborted_by_user = True
                     safe_print(f"\n{RED}[!] CTRL+C Intercepted: Securing files and folders...{OFF}")
                     
@@ -520,7 +534,7 @@ class Download:
                     self._append_lyrics_to_booklet(dirn, album_title)
                     
         except (KeyboardInterrupt, SystemExit):
-            abort_event.set()
+            self.abort_event.set()
             aborted_by_user = True
             safe_print(f"\n{RED}[!] CTRL+C Intercepted: Securing files and folders...{OFF}")
             
@@ -532,6 +546,7 @@ class Download:
             except Exception:
                 pass
                 
+        aborted_by_user = aborted_by_user or self.cancel_event.is_set()
         if aborted_by_user:
             # Crucial: Wait for threads to drop OS file locks before attempting folder rename
             time.sleep(1.5)
@@ -552,8 +567,12 @@ class Download:
         else:
             final_dirn = working_dirn
         
+        if self.on_release_complete:
+            self.on_release_complete(working_dirn, final_dirn)
         if aborted_by_user:
-            os._exit(1)
+            if not self.external_cancel:
+                raise KeyboardInterrupt
+            return
 
         # An incomplete album stays out of the database, so the next run retries its missing tracks
         if failed_tracks > 0:
@@ -569,6 +588,9 @@ class Download:
                            bit_depth=bit_depth, sampling_rate=sampling_rate, saved_path=final_dirn,
                            url=url, release_date=release_date, artist=db_artist, album=db_album)
         safe_print(f"{GREEN}Completed{OFF}")
+
+    def _track_failed(self, track, album, detail):
+        logger.error("Track %s failed: %s", track.get("id"), detail)
 
     def download_track(self):
         """
@@ -629,7 +651,7 @@ class Download:
             elif self.settings.no_cover:
                 logger.info(f"{OFF}Skipping cover")
             else:
-                _get_extra(track_meta["album"]["image"]["large"], dirn, art_size=self.settings.saved_art_size)
+                _get_extra(track_meta["album"]["image"]["large"], dirn, art_size=self.settings.saved_art_size, cancel_event=self.abort_event)
 
             if self.settings.embed_art:
                 embed_path = os.path.join(dirn, EMB_COVER_NAME)
@@ -640,7 +662,7 @@ class Download:
                         pass
                 
                 _get_extra(track_meta["album"]["image"]["large"], dirn, extra=EMB_COVER_NAME,
-                           art_size=self.settings.embedded_art_size)
+                           art_size=self.settings.embedded_art_size, cancel_event=self.abort_event)
             else:
                 logger.info(f"{OFF}Skipping embedded art")
                 
@@ -661,7 +683,7 @@ class Download:
             _clean_embed_art(dirn, self.settings)
 
             # A failed track stays out of the database, so the next run retries it
-            if not track_ok:
+            if not track_ok or self.cancel_event.is_set():
                 logger.info(f"{YELLOW}[!] Not recorded in the database: '{track_title}' failed. Run again to retry it.{OFF}")
                 return
 
@@ -710,6 +732,8 @@ class Download:
             bool: True if download and tagging succeed, False otherwise (e.g. aborted).
         """
         extension = ".mp3" if is_mp3 else ".flac"
+        progress_callback = (self.progress_factory(track_metadata, tmp_count, is_track, album_or_track_metadata)
+                             if self.progress_factory else None)
 
         track_artist = _safe_get(track_metadata, "performer", "name")
         filename_attr = self._get_filename_attr(
@@ -754,9 +778,11 @@ class Download:
 
         if os.path.exists(final_file):
             safe_print(f"{CYAN}[*] Skipping: {os.path.basename(final_file)} (Already exists){OFF}")
+            if self.on_track_complete:
+                self.on_track_complete(final_file, track_metadata, album_or_track_metadata, is_track, "already_on_disk")
             return True
 
-        if abort_event.is_set():
+        if self.abort_event.is_set():
             return False
 
         time.sleep(1)
@@ -791,7 +817,7 @@ class Download:
         final_fmt = int(self.quality)
 
         for attempt_fmt in qualities_to_try:
-            if abort_event.is_set():
+            if self.abort_event.is_set():
                 return False
                 
             if attempt_fmt != int(self.quality):
@@ -809,17 +835,21 @@ class Download:
                 
                 if "url" in fresh_track_dict:
                     try:
-                        tqdm_download(fresh_track_dict["url"], filename, desc, is_parallel=is_parallel)
+                        tqdm_download(fresh_track_dict["url"], filename, desc, is_parallel=is_parallel, cancel_event=self.abort_event, progress_callback=progress_callback)
                         success = True
                         final_fmt = attempt_fmt
                         break
                     except Exception as e:
-                        if abort_event.is_set(): return False
+                        if self.abort_event.is_set(): return False
+                        if not self.settings.segmented_fallback:
+                            raise
                         safe_print(f"{YELLOW}[!] Akamai block detected. Activating fallback segmented download...{OFF}")
                         fresh_track_dict = get_fresh_url(force_segments=True)
                 
                 if "url_template" in fresh_track_dict:
-                    tqdm_download_segments(fresh_track_dict, filename, desc, is_parallel=is_parallel)
+                    if not self.settings.segmented_fallback:
+                        raise ConnectionError("Segmented downloads are disabled in Settings")
+                    tqdm_download_segments(fresh_track_dict, filename, desc, is_parallel=is_parallel, cancel_event=self.abort_event, progress_callback=progress_callback)
                     success = True
                     final_fmt = attempt_fmt
                     break
@@ -829,12 +859,12 @@ class Download:
             except Exception as e:
                 pass
 
-        if not success and not abort_event.is_set():
+        if not success and not self.abort_event.is_set():
             safe_print(f"\n{RED}[!] TRACK {track_no} DEFINITIVELY DISCARDED AFTER ALL DOWNGRADES.{OFF}")
             safe_print(f"{YELLOW}[!] Skipping to the next track...{OFF}\n")
             return False
             
-        if abort_event.is_set():
+        if self.abort_event.is_set():
             return False
 
         # Use the format the server actually delivered (e.g. MP3 after falling back from
@@ -859,7 +889,14 @@ class Download:
             # run, so the track failed: the album stays [INCOMPLETE] and is retried next time
             return False
 
-        if getattr(self, 'fetch_lyrics', False) and hasattr(self, 'lyrics_engine') and not abort_event.is_set():
+        if self.on_track_complete:
+            try:
+                self.on_track_complete(final_file, track_metadata, album_or_track_metadata, is_track, "downloaded")
+            except Exception as error:
+                logger.error("Could not finalize %s: %s", final_file, error)
+                return False
+
+        if getattr(self, 'fetch_lyrics', False) and hasattr(self, 'lyrics_engine') and not self.abort_event.is_set():
             album_artist = _safe_get(track_metadata, "album", "artist", "name")
             performer_name = _safe_get(track_metadata, "performer", "name") or _safe_get(track_metadata, "artist", "name", default="Unknown")
             search_artist = performer_name if album_artist in [None, "Various Artists"] else album_artist
@@ -882,7 +919,7 @@ class Download:
 
         delay_time = getattr(self.settings, 'delay', 0)
             
-        if delay_time > 0 and not abort_event.is_set():
+        if delay_time > 0 and not self.abort_event.is_set():
             safe_print(f"{YELLOW}[*] Sleeping for {delay_time} seconds to prevent rate limiting...{OFF}")
             time.sleep(delay_time)
             
@@ -1116,7 +1153,7 @@ class Download:
         import re
         import textwrap
         
-        if self.no_credits or abort_event.is_set():
+        if self.no_credits or self.abort_event.is_set():
             return
 
         safe_title = sanitize_filename(album_title)
@@ -1196,7 +1233,7 @@ class Download:
     def _append_lyrics_to_booklet(self, dirn, album_title):
         """Reads downloaded .lrc files, strips timecodes, and appends the raw text to the booklet."""
         import re
-        if abort_event.is_set(): return
+        if self.abort_event.is_set(): return
 
         safe_title = sanitize_filename(album_title)
         tracklist_path = os.path.join(dirn, _fit_name(dirn, safe_title, " - Tracklist.txt"))
@@ -1246,7 +1283,7 @@ def _get_description(item: dict, track_title, multiple=None):
         downloading_title = f"[CD {multiple}] {downloading_title}"
     return downloading_title
 
-def tqdm_download(url_or_callable, fname, track_name, is_parallel=False):
+def tqdm_download(url_or_callable, fname, track_name, is_parallel=False, cancel_event=None, progress_callback=None):
     """
     Standard HTTP downloader wrapped in a tqdm progress bar with retry logic.
 
@@ -1256,7 +1293,8 @@ def tqdm_download(url_or_callable, fname, track_name, is_parallel=False):
         track_name (str): Track display name for the UI logger.
         is_parallel (bool, optional): Disables progress bars for clean multithreaded logging.
     """
-    if abort_event.is_set(): return
+    cancel_event = cancel_event if cancel_event is not None else abort_event
+    if cancel_event.is_set(): return
     G, Y, C, O = "\033[92m", "\033[93m", "\033[96m", "\033[0m"
 
     headers = {
@@ -1279,7 +1317,7 @@ def tqdm_download(url_or_callable, fname, track_name, is_parallel=False):
     backoff_delays = [2, 4, 8, 16, 32] 
 
     for attempt in range(max_retries):
-        if abort_event.is_set(): return
+        if cancel_event.is_set(): return
         try:
             url = url_or_callable() if callable(url_or_callable) else url_or_callable
 
@@ -1316,10 +1354,12 @@ def tqdm_download(url_or_callable, fname, track_name, is_parallel=False):
                     desc=tqdm_desc, initial=downloaded_size, bar_format=b_format, leave=False, disable=is_parallel
                 ) as bar:
                     for data in r.iter_content(chunk_size=65536):
-                        if abort_event.is_set(): return
+                        if cancel_event.is_set(): return
                         if data:
                             size = file.write(data)
                             downloaded_size += size
+                            if progress_callback:
+                                progress_callback(downloaded_size, total_size)
                             if not is_parallel:
                                 bar.update(size)
             
@@ -1343,7 +1383,7 @@ def tqdm_download(url_or_callable, fname, track_name, is_parallel=False):
                 if os.path.exists(fname): os.remove(fname)
                 raise Exception(f"Definitive timeout after {max_retries} attempts. Last error: {e}")
 
-    if downloaded_size < total_size and not abort_event.is_set():
+    if downloaded_size < total_size and not cancel_event.is_set():
         if os.path.exists(fname): os.remove(fname)
         raise Exception("Incomplete download")
 
@@ -1356,9 +1396,10 @@ def _get_title(item_dict):
     return item_title
 
 
-def _get_extra(item, dirn, extra="cover.jpg", art_size=None, og_quality=False):
+def _get_extra(item, dirn, extra="cover.jpg", art_size=None, og_quality=False, cancel_event=None):
     """Downloads supplementary files (e.g., Cover Arts)."""
-    if abort_event.is_set(): return
+    cancel_event = cancel_event if cancel_event is not None else abort_event
+    if cancel_event.is_set(): return
     extra_file = os.path.join(dirn, extra)
     if os.path.isfile(extra_file):
         logger.info(f"{OFF}{extra} was already downloaded")
@@ -1369,7 +1410,7 @@ def _get_extra(item, dirn, extra="cover.jpg", art_size=None, og_quality=False):
         item = item.replace("_600.", f"_{art_size}.")
         
     try:
-        tqdm_download(item, extra_file, extra, is_parallel=False)
+        tqdm_download(item, extra_file, extra, is_parallel=False, cancel_event=cancel_event)
     except Exception as e:
         safe_print(f"  {YELLOW}[!] Skipping cover art '{extra}': URL unreachable ({e}){OFF}")
 
@@ -1396,7 +1437,7 @@ def _safe_get(d: dict, *keys, default=None):
             curr = res
     return res
 
-def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False):
+def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False, cancel_event=None, progress_callback=None):
     """
     Downloads segmented tracks via the Web Player endpoint (WAF bypass).
     
@@ -1410,7 +1451,8 @@ def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False)
         track_name (str): Track display name for the UI.
         is_parallel (bool, optional): Disables progress bars for clean multithreaded logging.
     """
-    if abort_event.is_set(): return
+    cancel_event = cancel_event if cancel_event is not None else abort_event
+    if cancel_event.is_set(): return
     G, C, O = "\033[92m", "\033[96m", "\033[0m" 
     
     tmp_fname = fname + ".mp4"
@@ -1419,7 +1461,7 @@ def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False)
     raw_key = track_url_dict["raw_key"]
 
     def get_seg_size(seg_num):
-        if abort_event.is_set(): return 0
+        if cancel_event.is_set(): return 0
         url = url_template.replace("$SEGMENT$", str(seg_num))
         try:
             r = requests.head(url, timeout=5)
@@ -1431,7 +1473,7 @@ def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False)
         futures_size = [ex.submit(get_seg_size, i) for i in range(n_segments + 1)]
         for f in futures_size:
             while not f.done():
-                if abort_event.is_set(): return
+                if cancel_event.is_set(): return
                 time.sleep(0.1)
             total_size += f.result()
 
@@ -1444,16 +1486,24 @@ def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False)
         tqdm_desc = f" {G}Segmented Download{O}"
         b_format = "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]"
 
+    downloaded_size = 0
+    progress_lock = threading.Lock()
+
     def fetch_segment_fluid(seg_num):
-        if abort_event.is_set(): return bytearray()
+        nonlocal downloaded_size
+        if cancel_event.is_set(): return bytearray()
         url = url_template.replace("$SEGMENT$", str(seg_num))
         r = requests.get(url, stream=True, timeout=15)
         r.raise_for_status()
         seg_data = bytearray()
         
         for chunk in r.iter_content(chunk_size=65536):
-            if abort_event.is_set(): return bytearray()
+            if cancel_event.is_set(): return bytearray()
             seg_data.extend(chunk)
+            if progress_callback:
+                with progress_lock:
+                    downloaded_size += len(chunk)
+                    progress_callback(downloaded_size, total_size)
             if not is_parallel:
                 bar.update(len(chunk)) 
         return seg_data
@@ -1467,7 +1517,7 @@ def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False)
             segment_uuid = None
             for i in range(2):
                 seg_data = fetch_segment_fluid(i)
-                if abort_event.is_set(): return
+                if cancel_event.is_set(): return
                 if i == 1:
                     segment_uuid = _get_qobuz_segment_uuid(seg_data)
                     if segment_uuid is None:
@@ -1480,13 +1530,13 @@ def tqdm_download_segments(track_url_dict, fname, track_name, is_parallel=False)
                     futures_seg = [executor.submit(fetch_segment_fluid, i) for i in range(2, n_segments + 1)]
                     for f in futures_seg:
                         while not f.done():
-                            if abort_event.is_set(): return
+                            if cancel_event.is_set(): return
                             time.sleep(0.2)
                         seg_data = f.result()
-                        if not abort_event.is_set():
+                        if not cancel_event.is_set():
                             file.write(_decrypt_qobuz_segment(seg_data, raw_key, segment_uuid))
 
-        if abort_event.is_set(): return
+        if cancel_event.is_set(): return
         if not is_parallel:
             safe_print(f" {G}  > Assembling the final FLAC file...{O}")
             
@@ -1559,15 +1609,16 @@ def _decrypt_qobuz_segment(segment_data, raw_key, segment_uuid):
         pos += size
     return bytes(buf)
 
-def _download_goodies(album_meta, dirn):
+def _download_goodies(album_meta, dirn, cancel_event=None):
     """Downloads official digital PDF booklets provided by the Qobuz API."""
-    if abort_event.is_set(): return
+    cancel_event = cancel_event if cancel_event is not None else abort_event
+    if cancel_event.is_set(): return
     try:
         for goody in album_meta.get("goodies", []):
-            if abort_event.is_set(): break
+            if cancel_event.is_set(): break
             if not goody.get("url"): continue
             goody_name = sanitize_filename(clean_filename(f'{album_meta.get("title")} ({goody.get("id")}).pdf'))
-            _get_extra(goody.get("url"), dirn, extra=goody_name)
+            _get_extra(goody.get("url"), dirn, extra=goody_name, cancel_event=cancel_event)
     except Exception as e:
         logger.error(f"{RED}Error downloading goodies: {e}", exc_info=True)
 
