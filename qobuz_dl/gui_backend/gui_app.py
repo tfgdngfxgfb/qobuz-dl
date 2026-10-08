@@ -35,6 +35,7 @@ from qobuz_dl.gui_backend.routes.download_routes import register_download_routes
 from qobuz_dl.gui_backend.routes.feedback_routes import register_feedback_routes
 from qobuz_dl.gui_backend.routes.history_routes import register_history_routes
 from qobuz_dl.gui_backend.routes.lyrics_routes import register_lyrics_routes
+from qobuz_dl.gui_backend.routes.metadata_repair_routes import register_metadata_repair_routes
 from qobuz_dl.gui_backend.routes.queue_routes import register_queue_routes
 from qobuz_dl.gui_backend.routes.replacement_routes import register_replacement_routes
 from qobuz_dl.gui_backend.routes.search_routes import register_search_routes
@@ -225,6 +226,11 @@ register_config_routes(
 
 
 register_search_routes(app, get_qobuz=_get_qobuz)
+
+_metadata_repair_jobs = register_metadata_repair_routes(
+    app, get_qobuz=_get_qobuz,
+    download_active=lambda: bool(_download_state["download_active"]),
+)
 
 
 # ---------------------------------------------------------------------------

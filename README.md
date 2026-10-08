@@ -36,6 +36,29 @@ source versions, architecture, tests and future upstream updates. To create a
 local desktop executable, install `requirements-build.txt` and run
 `python -m PyInstaller --noconfirm qobuz_dl_gui.spec`.
 
+## Update older files
+
+Connect to Qobuz, then open **Settings → Update artists & ISRC**. Choose the
+music folder and click **Preview matches**. FLAC, MP3 and M4A files are searched
+recursively using title, artist, album and audio duration; Qobuz IDs are optional.
+The preview shows current and proposed artists and ISRC. All performing artists
+credited on the chosen Qobuz recording are stored as separate artist values.
+
+Review the proposed recording before selecting files and clicking **Write
+selected changes**. Ambiguous versions require a manual choice; conflicting
+existing ISRC codes are blocked. Existing ISRC values and other populated tags
+are retained. **Also fill other empty tags** optionally fills title, album,
+album artist, composer, date, genre, copyright, label, barcode and performer
+credits; it is off by default.
+
+Writing changes updates tags without downloading or re-encoding audio, renaming
+files or adding Qobuz IDs. Full original-file backups are enabled by default
+and stored under `.qobuz-metadata-backup/<job>/<relative filename>` in the chosen
+folder; allow disk space for these copies. The backup folder is excluded from
+scans. To restore a file, copy its backup over the updated file. MP3 multi-artist
+tags use ID3v2.4; older MP3 tags that cannot be converted without discarding
+unsupported frames are skipped and reported.
+
 ---
 
 # qobuz-dl Ultimate Edition

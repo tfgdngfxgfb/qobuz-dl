@@ -41,6 +41,29 @@ the GUI adds lyrics. FLAC and ALAC use per-disc track totals. The default title
 and album tags use source metadata; existing user choices to derive titles from
 format patterns remain available.
 
+## Existing files without Qobuz IDs
+
+The GUI's **Update artists & ISRC** tool is implemented in `metadata_repair.py`,
+with background jobs and API routes in `gui_backend`. It reuses the authenticated
+GUI client, full `track/get` metadata and the shared credit parser. It searches
+by existing title and artist, comparing album and measured audio duration.
+Existing Qobuz IDs are used when present; they are not written into updated files.
+
+The scan only creates a preview. A unique title/artist/album/duration match is
+recommended; matches identifying different ISRC recordings require a manual
+choice. Matching ISRC can identify editions of the same recording, while a
+conflicting existing ISRC blocks writing. A recommendation is evidence for
+review, not a guarantee that an old file contains that recording.
+
+Approved writes replace ARTIST and fill missing ISRC. Other fields are left
+alone unless the user enables filling empty text tags; existing values stay
+untouched. Each write is prepared in a sibling temporary file, read back and
+replaces the original after checking that the previewed file has not changed.
+Full original-file backups are on by default. Cover art and audio are preserved;
+there is no download, rename, audio conversion or database synchronization.
+Older MP3 tags with unsupported frames are skipped rather than losing those
+frames during conversion to ID3v2.4.
+
 ## Upstream changes kept small
 
 The upstream downloader has optional callbacks for completed tracks and final
@@ -71,6 +94,11 @@ and a fake Qobuz API; they do not require credentials or download commercial
 recordings. They cover file readback, all artists, band-name preservation, ISRC,
 dates, credits, disc totals, replacements, playlist order, failures, cancellation
 and pause, alongside the original GUI contract tests.
+
+Existing-file tests also check ambiguous versions, preserving existing ISRC and
+all unrelated tags and artwork, optional empty tags, stale previews, failed
+writes, exact backups and SHA-256 hashes of the encoded audio packets for FLAC,
+MP3 and ALAC. GUI smoke tests use generated silence and a synthetic catalog.
 
 An actual account/region and its live streaming responses must still be checked
 by signing in and downloading an available track through the GUI.

@@ -2,7 +2,7 @@
 
 import os
 
-__version__ = "2.5.9.1"
+__version__ = "2.5.9.2"
 
 # In-app update checks use:
 #   GET https://api.github.com/repos/{GITHUB_RELEASE_REPO}/releases/latest

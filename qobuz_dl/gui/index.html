@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qobuz-DL</title>
+    <link rel="stylesheet" href="/gui/metadata-repair.css?v=1" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
@@ -294,6 +295,11 @@
                             <div id="settings-update-feedback" class="feedback-msg hidden"></div>
                         </div>
 
+                        <div class="settings-section">
+                            <span class="settings-section-label">Existing music files</span>
+                            <button id="settings-metadata-repair-btn" type="button" class="btn-secondary btn-full">Update artists &amp; ISRC</button>
+                            <p class="settings-hint">Preview metadata for older files, even without Qobuz IDs.</p>
+                        </div>
                         <div class="settings-danger">
                             <button id="settings-purge-btn" class="btn-danger">
                                 Purge Download Database
@@ -1213,6 +1219,44 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
         </main>
 
 
+        <div id="metadata-repair-overlay" class="metadata-repair-overlay hidden" aria-hidden="true">
+            <section class="metadata-repair-dialog" role="dialog" aria-modal="true" aria-labelledby="metadata-repair-heading">
+                <header class="metadata-repair-head">
+                    <h2 id="metadata-repair-heading">Update existing files</h2>
+                    <button type="button" id="metadata-repair-close" class="btn-ghost btn-sm" aria-label="Close metadata preview">✕</button>
+                </header>
+                <div class="metadata-repair-body">
+                    <p>Correct track artists and fill missing ISRC from Qobuz. Review the recording before writing. Existing ISRC and other filled tags are kept; audio is not downloaded or re-encoded.</p>
+                    <label class="metadata-repair-caption" for="metadata-repair-folder">Music folder (including subfolders)</label>
+                    <div class="metadata-repair-folder">
+                        <input type="text" id="metadata-repair-folder" placeholder="Choose or paste your music folder" />
+                        <button type="button" id="metadata-repair-browse" class="btn-secondary btn-sm">Choose folder</button>
+                    </div>
+                    <div class="metadata-repair-options">
+                        <label><input type="checkbox" id="metadata-repair-other" /> Also fill other empty tags</label>
+                        <label><input type="checkbox" id="metadata-repair-backup" checked /> Keep backup copies</label>
+                    </div>
+                    <p>Optional empty tags: title, album, album artist, composer, date, genre, copyright, label, barcode and performer credits. Backups of changed files are kept in .qobuz-metadata-backup inside your music folder.</p>
+                    <div class="metadata-repair-toolbar">
+                        <button type="button" id="metadata-repair-scan" class="btn-primary btn-sm">Preview matches</button>
+                        <button type="button" id="metadata-repair-stop" class="btn-secondary btn-sm hidden">Stop</button>
+                        <button type="button" id="metadata-repair-recommended" class="btn-secondary btn-sm" disabled>Select strong matches on this page</button>
+                        <span id="metadata-repair-status" class="metadata-repair-status" role="status" aria-live="polite"></span>
+                    </div>
+                    <div id="metadata-repair-error" class="metadata-repair-error" role="alert"></div>
+                    <div id="metadata-repair-rows"></div>
+                </div>
+                <footer class="metadata-repair-footer">
+                    <div class="metadata-repair-pages">
+                        <button type="button" id="metadata-repair-prev" class="btn-ghost btn-sm" disabled>Previous</button>
+                        <span id="metadata-repair-page"></span>
+                        <button type="button" id="metadata-repair-next" class="btn-ghost btn-sm" disabled>Next</button>
+                    </div>
+                    <button type="button" id="metadata-repair-apply" class="btn-primary btn-sm" disabled>Write selected changes (0)</button>
+                </footer>
+            </section>
+        </div>
+
         <!-- ── Settings popover backdrop ── -->
         <div id="settings-backdrop" class="settings-backdrop hidden"></div>
 
@@ -1417,6 +1461,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
     <script src="/gui/js/features/search/searchController.js?v=1"></script>
     <script src="/gui/js/ui/feedbackMessage.js?v=1"></script>
     <script src="/gui/js/features/feedback/issueReportSubsystem.js?v=1"></script>
+    <script src="/gui/js/features/metadataRepair.js?v=1"></script>
     <script src="/gui/app.js?v=101"></script>
 </body>
 
