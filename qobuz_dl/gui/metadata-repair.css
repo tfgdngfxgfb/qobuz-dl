@@ -29,4 +29,10 @@
 .metadata-repair-footer { border-top: 1px solid var(--border); flex-wrap: wrap; }
 .metadata-repair-pages { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
 .metadata-repair-empty { padding: 25px 0; text-align: center; color: var(--text-secondary); font-size: 13px; }
+.metadata-repair-artists { padding: 10px 0; margin-bottom: 10px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.metadata-repair-artists p { margin: 8px 0; }
+.metadata-repair-artist-results { max-height: 150px; overflow-y: auto; }
+.metadata-repair-artist-result { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 12px; }
+.metadata-repair-selected-artists { display: flex; flex-wrap: wrap; gap: 8px; }
+.metadata-repair-selected-artists button { white-space: normal; text-align: left; }
 @media (max-width: 640px) { .metadata-repair-overlay { padding: 8px; } .metadata-repair-comparison { grid-template-columns: 1fr; gap: 8px; } .metadata-repair-body { padding: 12px; } .metadata-repair-head, .metadata-repair-footer { padding: 12px; } }

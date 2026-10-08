@@ -10,11 +10,11 @@ from qobuz_dl.metadata_repair import (
 )
 
 
-BUSY_PHASES = {"scanning", "searching", "applying"}
+BUSY_PHASES = {"cataloging", "scanning", "searching", "applying"}
 
 
 class MetadataRepairJob:
-    def __init__(self, root, client, fill_other=False):
+    def __init__(self, root, client, fill_other=False, artist_ids=None):
         self.id = secrets.token_hex(12)
         self.root = Path(root).expanduser().resolve(strict=True)
         if not self.root.is_dir():
@@ -22,8 +22,10 @@ class MetadataRepairJob:
         self.fill_other = bool(fill_other)
         self.cancel = threading.Event()
         self.lock = threading.RLock()
-        self.matcher = RecordingMatcher(client, self.cancel)
-        self.phase = "scanning"
+        self.matcher = RecordingMatcher(client, self.cancel, artist_ids)
+        self.artist_ids = self.matcher.artist_ids
+        self.catalog = {}
+        self.phase = "cataloging" if self.artist_ids else "scanning"
         self.rows = []
         self.total = 0
         self.processed = 0
@@ -36,11 +38,19 @@ class MetadataRepairJob:
     def start(self):
         self._spawn(self.scan)
 
+    def _catalog_progress(self, state):
+        with self.lock:
+            self.catalog = state
+
     def scan(self):
         try:
             files = list(library_files(self.root))
             with self.lock:
                 self.total = len(files)
+            if self.artist_ids:
+                self.matcher.prepare_profiles(self._catalog_progress)
+            with self.lock:
+                self.phase = "scanning"
             for path in files:
                 if self.cancel.is_set():
                     break
@@ -71,6 +81,7 @@ class MetadataRepairJob:
             for row in self.rows[offset:offset + limit]:
                 rows.append({key: deepcopy(value) for key, value in row.items() if key != "recording"})
             return {"id": self.id, "phase": self.phase, "root": str(self.root), "fill_other": self.fill_other,
+                    "artist_ids": self.artist_ids, "catalog": deepcopy(self.catalog),
                     "total": self.total, "processed": self.processed, "updated": self.updated,
                     "error": self.error, "row_count": len(self.rows), "rows": rows,
                     "offset": offset, "limit": limit,
@@ -151,13 +162,13 @@ class MetadataRepairJobs:
         if any(job.id != job_id and job.phase in BUSY_PHASES for job in self.jobs.values()):
             raise ValueError("Another existing-file operation is running")
 
-    def create(self, root, client, fill_other=False):
+    def create(self, root, client, fill_other=False, artist_ids=None):
         with self.lock:
             if any(job.phase in BUSY_PHASES for job in self.jobs.values()):
                 raise ValueError("An existing-file operation is already running")
             while len(self.jobs) >= 2:
                 self.jobs.pop(next(iter(self.jobs)))
-            job = MetadataRepairJob(root, client, fill_other)
+            job = MetadataRepairJob(root, client, fill_other, artist_ids)
             self.jobs[job.id] = job
             job.start()
             return job

@@ -1,9 +1,11 @@
 /* Existing files: preview Qobuz matches, then approve metadata-only writes. */
 (function () {
   "use strict";
-  const busyPhases = new Set(["scanning", "searching", "applying"]);
+  const busyPhases = new Set(["cataloging", "scanning", "searching", "applying"]);
   const selected = new Map();
   const choices = new Map();
+  const profiles = new Map();
+  let artistResults = [], artistQuery = "", artistOffset = 0, artistMore = false, findingArtist = false;
   let job = null, offset = 0, polling = null, signature = "", opened = false, focusBefore = null;
   const byId = (id) => document.getElementById(id);
   const limit = 50;
@@ -20,7 +22,7 @@
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     const data = await response.json();
-    if (!response.ok || data.ok === false) throw new Error(data.error || "Operation failed");
+    if (!response.ok || (data.ok === false && !data.cancelled)) throw new Error(data.error || "Operation failed");
     return data;
   }
   function notice(message) { byId("metadata-repair-error").textContent = message || ""; }
@@ -31,8 +33,15 @@
     byId("metadata-repair-folder").disabled = Boolean(busy);
     byId("metadata-repair-browse").disabled = Boolean(busy);
     byId("metadata-repair-other").disabled = Boolean(busy);
+    byId("metadata-repair-artist-query").disabled = Boolean(busy);
+    byId("metadata-repair-artist-find").disabled = Boolean(busy) || findingArtist;
+    byId("metadata-repair-artist-more").disabled = Boolean(busy) || findingArtist;
+    for (const button of byId("metadata-repair-selected-artists").querySelectorAll("button")) button.disabled = Boolean(busy);
+    for (const button of byId("metadata-repair-artist-results").querySelectorAll("button")) button.disabled = Boolean(busy) || profiles.has(button.dataset.artistId);
     const samePreview = job && job.root === byId("metadata-repair-folder").value.trim()
-      && job.fill_other === byId("metadata-repair-other").checked;
+      && job.fill_other === byId("metadata-repair-other").checked
+      && JSON.stringify(job.artist_ids || []) === JSON.stringify([...profiles.keys()]);
+    byId("metadata-repair-scope").textContent = job && !samePreview ? "Folder, profiles or options changed. Preview matches again before writing." : (profiles.size ? `Search scope: ${[...profiles.values()].map((p) => p.name).join("; ")}` : "Search scope: full Qobuz catalog");
     byId("metadata-repair-apply").disabled = !job || busy || !selected.size || !samePreview || !["ready", "complete"].includes(job.phase);
     byId("metadata-repair-apply").textContent = `Write selected changes (${selected.size})`;
     byId("metadata-repair-prev").disabled = offset === 0 || Boolean(busy);
@@ -40,6 +49,41 @@
     byId("metadata-repair-recommended").disabled = !job || Boolean(busy);
     byId("metadata-repair-page").textContent = job && job.row_count
       ? `${offset + 1}–${Math.min(offset + limit, job.row_count)} of ${job.row_count}` : "";
+  }
+  function renderProfiles() {
+    const results = byId("metadata-repair-artist-results"); results.replaceChildren();
+    for (const profile of artistResults) {
+      const row = element("div", undefined, "metadata-repair-artist-result");
+      row.append(element("span", `${profile.name} · ${profile.albums} releases · ID ${profile.id}`));
+      const add = element("button", "Add profile", "btn-secondary btn-sm"); add.type = "button";
+      add.dataset.artistId = profile.id; add.setAttribute("aria-label", `Add ${profile.name} profile ${profile.id}`);
+      add.addEventListener("click", () => {
+        if (profiles.size >= 20) { notice("Choose up to 20 artist profiles."); return; }
+        profiles.set(profile.id, profile); notice(""); renderProfiles();
+      });
+      row.append(add); results.append(row);
+    }
+    const chosen = byId("metadata-repair-selected-artists"); chosen.replaceChildren();
+    for (const profile of profiles.values()) {
+      const remove = element("button", `${profile.name} (ID ${profile.id}) ×`, "btn-secondary btn-sm"); remove.type = "button";
+      remove.setAttribute("aria-label", `Remove ${profile.name} profile ${profile.id}`);
+      remove.addEventListener("click", () => { profiles.delete(profile.id); renderProfiles(); }); chosen.append(remove);
+    }
+    byId("metadata-repair-artist-more").classList.toggle("hidden", !artistMore); controls();
+  }
+  async function findArtist(more = false) {
+    if (findingArtist) return;
+    findingArtist = true; controls();
+    try {
+      notice("");
+      if (!more) { artistQuery = byId("metadata-repair-artist-query").value.trim(); artistOffset = 0; }
+      const data = await api(`/api/metadata-repair/artists?q=${encodeURIComponent(artistQuery)}&offset=${artistOffset}`);
+      artistResults = more ? artistResults.concat(data.artists) : data.artists;
+      artistOffset += data.artists.length; artistMore = data.more;
+      if (!artistResults.length) notice("No artist profiles found.");
+      renderProfiles();
+    } catch (error) { notice(error.message); }
+    finally { findingArtist = false; controls(); }
   }
   function renderRow(row) {
     const card = element("article", undefined, "metadata-repair-row");
@@ -99,8 +143,10 @@
     select.addEventListener("change", change);
     card.append(select, comparison, evidence, additional);
     const search = element("div", undefined, "metadata-repair-search");
-    const query = element("input"); query.type = "text"; query.value = [row.local.title, row.local.artists[0]].filter(Boolean).join(" ");
-    query.placeholder = "Title and artist"; query.setAttribute("aria-label", `Search another recording for ${row.local.relative_path}`);
+    const query = element("input"); query.type = "text";
+    query.value = (job.artist_ids || []).length ? row.local.title : [row.local.title, row.local.artists[0]].filter(Boolean).join(" ");
+    query.placeholder = (job.artist_ids || []).length ? "Title in selected artist profiles" : "Title and artist";
+    query.setAttribute("aria-label", `Search another recording for ${row.local.relative_path}`);
     const searchButton = element("button", "Search again", "btn-secondary btn-sm"); searchButton.type = "button"; searchButton.disabled = busyPhases.has(job.phase);
     searchButton.addEventListener("click", async () => {
       try { notice(""); selected.delete(row.id); choices.delete(row.id); await api(`/api/metadata-repair/${job.id}/find`, { row_id: row.id, query: query.value }); await refresh(); }
@@ -110,8 +156,9 @@
   }
   function render() {
     const status = byId("metadata-repair-status");
-    const labels = { scanning: "Finding Qobuz matches", searching: "Searching", applying: "Writing approved metadata", ready: "Preview ready", complete: "Write finished", cancelled: "Stopped", error: "Operation failed" };
+    const labels = { cataloging: "Reading artist releases", scanning: "Finding Qobuz matches", searching: "Searching", applying: "Writing approved metadata", ready: "Preview ready", complete: "Write finished", cancelled: "Stopped", error: "Operation failed" };
     status.textContent = job ? `${labels[job.phase] || job.phase} · ${job.processed}/${job.total} files · ${job.updated} updated${job.error_count ? ` · ${job.error_count} errors` : ""}` : "Choose a folder, then preview matches.";
+    if (job && (job.artist_ids || []).length) status.textContent += ` · ${job.catalog.albums_loaded || 0}/${job.catalog.albums_total || 0} releases · ${job.catalog.tracks || 0} catalog tracks`;
     if (job && job.error) notice(job.error);
     const rows = byId("metadata-repair-rows");
     rows.replaceChildren();
@@ -135,7 +182,7 @@
     byId("settings-popover").classList.add("hidden"); byId("settings-backdrop").classList.add("hidden");
     byId("settings-gear-btn").classList.remove("active");
     if (!byId("metadata-repair-folder").value) {
-      try { const data = await api("/api/status"); byId("metadata-repair-folder").value = data.config && data.config.default_folder || ""; } catch (_) {}
+      try { const data = await api("/api/metadata-repair/preferences"); byId("metadata-repair-folder").value = data.preferences.folder || ""; } catch (_) {}
     }
     render(); byId("metadata-repair-folder").focus();
     if (job) await refresh();
@@ -146,6 +193,9 @@
     byId("metadata-repair-close").addEventListener("click", close);
     byId("metadata-repair-folder").addEventListener("input", controls);
     byId("metadata-repair-other").addEventListener("change", controls);
+    byId("metadata-repair-artist-find").addEventListener("click", () => findArtist());
+    byId("metadata-repair-artist-more").addEventListener("click", () => findArtist(true));
+    byId("metadata-repair-artist-query").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); findArtist(); } });
     byId("metadata-repair-browse").addEventListener("click", async () => {
       try { const result = await api("/api/browse_folder", {}); if (result.path) byId("metadata-repair-folder").value = result.path; controls(); }
       catch (_) { notice("Type or paste the folder path when the folder picker is unavailable."); }
@@ -154,9 +204,10 @@
       const button = byId("metadata-repair-scan"); button.disabled = true;
       try {
         notice(""); clearTimeout(polling);
-        const data = await api("/api/metadata-repair", { folder: byId("metadata-repair-folder").value, fill_other: byId("metadata-repair-other").checked });
+        const data = await api("/api/metadata-repair", { folder: byId("metadata-repair-folder").value, fill_other: byId("metadata-repair-other").checked, artist_ids: [...profiles.keys()] });
         job = data.job; offset = 0; signature = ""; selected.clear(); choices.clear();
         byId("metadata-repair-folder").value = job.root; render(); await refresh();
+        if (data.warning) notice(data.warning);
       } catch (error) { notice(error.message); controls(); }
     });
     byId("metadata-repair-stop").addEventListener("click", async () => {

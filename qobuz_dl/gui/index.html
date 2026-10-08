@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qobuz-DL</title>
-    <link rel="stylesheet" href="/gui/metadata-repair.css?v=1" />
+    <link rel="stylesheet" href="/gui/metadata-repair.css?v=2" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
@@ -1232,6 +1232,18 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
                         <input type="text" id="metadata-repair-folder" placeholder="Choose or paste your music folder" />
                         <button type="button" id="metadata-repair-browse" class="btn-secondary btn-sm">Choose folder</button>
                     </div>
+                    <p>This folder is used only for metadata updates and remembered separately from the download folder.</p>
+                    <div class="metadata-repair-artists">
+                        <label class="metadata-repair-caption" for="metadata-repair-artist-query">Artist profiles (optional)</label>
+                        <div class="metadata-repair-search">
+                            <input type="text" id="metadata-repair-artist-query" placeholder="Artist name, Qobuz profile link or ID" />
+                            <button type="button" id="metadata-repair-artist-find" class="btn-secondary btn-sm">Find artist</button>
+                        </div>
+                        <p>Select one or more profiles to match against their releases, including different editions. Leave empty to search the full catalog.</p>
+                        <div id="metadata-repair-artist-results" class="metadata-repair-artist-results"></div>
+                        <button type="button" id="metadata-repair-artist-more" class="btn-ghost btn-sm hidden">More artist results</button>
+                        <div id="metadata-repair-selected-artists" class="metadata-repair-selected-artists"></div>
+                    </div>
                     <div class="metadata-repair-options">
                         <label><input type="checkbox" id="metadata-repair-other" /> Also fill other empty tags</label>
                         <label><input type="checkbox" id="metadata-repair-backup" checked /> Keep backup copies</label>
@@ -1244,6 +1256,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
                         <span id="metadata-repair-status" class="metadata-repair-status" role="status" aria-live="polite"></span>
                     </div>
                     <div id="metadata-repair-error" class="metadata-repair-error" role="alert"></div>
+                    <div id="metadata-repair-scope" class="metadata-repair-evidence"></div>
                     <div id="metadata-repair-rows"></div>
                 </div>
                 <footer class="metadata-repair-footer">
@@ -1461,7 +1474,7 @@ Total tracks on the album; Plex uses this for completeness and ordering hints.">
     <script src="/gui/js/features/search/searchController.js?v=1"></script>
     <script src="/gui/js/ui/feedbackMessage.js?v=1"></script>
     <script src="/gui/js/features/feedback/issueReportSubsystem.js?v=1"></script>
-    <script src="/gui/js/features/metadataRepair.js?v=1"></script>
+    <script src="/gui/js/features/metadataRepair.js?v=2"></script>
     <script src="/gui/app.js?v=101"></script>
 </body>
 

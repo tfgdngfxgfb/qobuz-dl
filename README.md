@@ -41,8 +41,21 @@ local desktop executable, install `requirements-build.txt` and run
 Connect to Qobuz, then open **Settings → Update artists & ISRC**. Choose the
 music folder and click **Preview matches**. FLAC, MP3 and M4A files are searched
 recursively using title, artist, album and audio duration; Qobuz IDs are optional.
+This tool has its own folder selection. It starts empty and remembers the last
+previewed folder independently, without reading or changing the download folder.
 The preview shows current and proposed artists and ISRC. All performing artists
 credited on the chosen Qobuz recording are stored as separate artist values.
+
+For artist-by-artist work, use **Find artist** to search by name, Qobuz profile
+link or numeric artist ID, then add one or more profiles. The preview reads the
+releases listed on these profiles across all returned pages, keeping singles,
+compilations and different editions. It then matches against tracks from these
+releases instead of a global track search. Shared albums are read once. The
+selected profiles can supply artist evidence when an old ARTIST tag is absent
+or wrong; title, album and duration still need to match for a recommendation.
+Complete track credits are fetched for proposed recordings, including guests.
+Tracks by unrelated artists on shared compilations are excluded. With no profile
+selected, the usual full-catalog search remains available.
 
 Review the proposed recording before selecting files and clicking **Write
 selected changes**. Ambiguous versions require a manual choice; conflicting

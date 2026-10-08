@@ -230,6 +230,7 @@ register_search_routes(app, get_qobuz=_get_qobuz)
 _metadata_repair_jobs = register_metadata_repair_routes(
     app, get_qobuz=_get_qobuz,
     download_active=lambda: bool(_download_state["download_active"]),
+    config_path=lambda: CONFIG_PATH,
 )
 
 

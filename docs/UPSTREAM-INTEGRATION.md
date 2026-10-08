@@ -49,6 +49,22 @@ GUI client, full `track/get` metadata and the shared credit parser. It searches
 by existing title and artist, comparing album and measured audio duration.
 Existing Qobuz IDs are used when present; they are not written into updated files.
 
+Optional selected artist profiles are handled by `artist_catalog.py`. All
+`get_artist_meta` pages are consumed, album IDs are deduplicated, and each
+returned release's track list is read without the downloader's discography
+filters. Profile-scoped searches retain every exact-title edition before
+fetching full track details, so the shortlist cannot hide conflicting ISRCs.
+Full credits or a performer ID must associate a proposed track with a selected
+profile; unrelated tracks from compilations are excluded. A selected profile
+can replace missing artist evidence, but title, album and duration still need
+to match. Incomplete catalog responses stop the preview rather than producing
+recommendations from a partial catalog. Catalog loading supports cancellation.
+
+The metadata folder is persisted in `metadata_repair_preferences.json`, separate
+from download configuration. The frontend never derives it from `default_folder`
+and preview/write operations never update that setting. It starts empty when
+there is no saved metadata folder.
+
 The scan only creates a preview. A unique title/artist/album/duration match is
 recommended; matches identifying different ISRC recordings require a manual
 choice. Matching ISRC can identify editions of the same recording, while a
@@ -99,6 +115,10 @@ Existing-file tests also check ambiguous versions, preserving existing ISRC and
 all unrelated tags and artwork, optional empty tags, stale previews, failed
 writes, exact backups and SHA-256 hashes of the encoded audio packets for FLAC,
 MP3 and ALAC. GUI smoke tests use generated silence and a synthetic catalog.
+Profile tests cover multiple profiles, paginated releases, shared albums,
+incomplete old artist tags, alternative artist names, compilation filtering,
+ambiguity beyond the shortlist, cancellation, incomplete catalog responses,
+profile-link lookup and independent folder persistence.
 
 An actual account/region and its live streaming responses must still be checked
 by signing in and downloading an available track through the GUI.

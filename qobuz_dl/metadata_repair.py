@@ -15,6 +15,7 @@ from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4FreeForm
 
 from qobuz_dl.credits import artist_tags, normalize_isrc, track_artists
+from qobuz_dl.artist_catalog import ArtistCatalog, normalize_artist_ids
 from qobuz_dl.metadata import _format_copyright, _format_genres, _get_title_with_version
 from qobuz_dl.settings import QobuzDLSettings
 
@@ -145,12 +146,12 @@ def candidate_from_track(track):
         "BARCODE": [str(album.get("upc") or "")], "PERFORMER": [track.get("performers") or ""],
     }
     return {"id": str(track.get("id") or ""), "title": title,
-            "artists": track_artists(track, album), "album": str(album.get("title") or ""),
+            "artists": track_artists(track, album), "album": additional["ALBUM"][0],
             "isrc": valid_isrc(track.get("isrc")), "duration": float(track.get("duration") or 0),
             "other": additional}
 
 
-def assess_match(local, candidate):
+def assess_match(local, candidate, profile_names=()):
     title_equal = bool(local.title) and _title_key(local.title) == _title_key(candidate["title"])
     old_names = {_key(name) for name in local.artists if _key(name)}
     new_names = {_key(name) for name in candidate["artists"] if _key(name)}
@@ -160,13 +161,14 @@ def assess_match(local, candidate):
         combined = " ".join(old_names)
         artist_equal = any(re.search(r"(?:^|\s)" + re.escape(name) + r"(?:$|\s)", combined)
                            for name in new_names if len(name) > 2)
+    profile_equal = bool(candidate.get("profile_match") or new_names & {_key(name) for name in profile_names})
     album_equal = bool(local.album) and _key(local.album) == _key(candidate["album"])
     duration_equal = local.duration > 0 and candidate["duration"] > 0 and abs(local.duration - candidate["duration"]) <= 2
     isrc_equal = bool(valid_isrc(local.isrc)) and valid_isrc(local.isrc) == candidate["isrc"]
     conflict = bool(valid_isrc(local.isrc) and candidate["isrc"] and not isrc_equal)
     score = (35 if title_equal else round(15 * SequenceMatcher(None, _title_key(local.title), _title_key(candidate["title"])).ratio()))
-    score += 25 * artist_equal + 20 * album_equal + 20 * duration_equal
-    strong = (isrc_equal and title_equal and duration_equal) or (title_equal and artist_equal and album_equal and duration_equal)
+    score += 25 * (artist_equal or profile_equal) + 20 * album_equal + 20 * duration_equal
+    strong = (isrc_equal and title_equal and duration_equal) or (title_equal and (artist_equal or profile_equal) and album_equal and duration_equal)
     if local.qobuz_id and local.qobuz_id == candidate["id"]:
         strong = title_equal and duration_equal
     reasons = []
@@ -175,6 +177,8 @@ def assess_match(local, candidate):
             reasons.append(label)
     if isrc_equal:
         reasons.append("existing ISRC")
+    if profile_equal:
+        reasons.append("selected artist profile")
     if conflict:
         reasons.append("different existing ISRC")
     return dict(candidate, score=score, strong=bool(strong and not conflict),
@@ -182,16 +186,50 @@ def assess_match(local, candidate):
 
 
 class RecordingMatcher:
-    def __init__(self, client, cancel_event):
+    def __init__(self, client, cancel_event, artist_ids=None):
         self.client = client
         self.cancel_event = cancel_event
         self.search_cache = {}
         self.track_cache = {}
+        self.artist_ids = normalize_artist_ids(artist_ids)
+        self.catalog = ArtistCatalog(client, cancel_event, self.artist_ids) if self.artist_ids else None
+        self.catalog_candidates = []
+        self.profile_names = []
+
+    def prepare_profiles(self, progress):
+        if self.catalog:
+            self.catalog.prepare(progress)
+            self.profile_names = [p["name"] for p in self.catalog.state["profiles"]]
+            self.catalog_candidates = []
+            for track in self.catalog.tracks.values():
+                candidate = candidate_from_track(track)
+                candidate["profile_match"] = self._belongs_to_profile(track, candidate)
+                self.catalog_candidates.append(candidate)
+
+    def _belongs_to_profile(self, track, candidate):
+        return str((track.get("performer") or {}).get("id")) in self.artist_ids or bool(
+            {_key(a) for a in candidate["artists"]}.intersection(_key(n) for n in self.profile_names))
+
+    def _profile_ids(self, local, query):
+        if not self.catalog.state["complete"]:
+            raise ValueError("Artist catalog preview is incomplete")
+        pool = self.catalog_candidates
+        if query:
+            words = _key(query).split()
+            pool = [c for c in pool if all(word in _key(" ".join([c["title"], *c["artists"], c["album"]])) for word in words)]
+        ranked = sorted((assess_match(local, c, self.profile_names) for c in pool), key=lambda c: c["score"], reverse=True)
+        # Read all exact title/ISRC editions, including those beyond the usual
+        # shortlist, so a repeated title cannot hide a conflicting recording.
+        exact = [c["id"] for c in ranked if (local.title and _title_key(local.title) == _title_key(c["title"]))
+                 or (valid_isrc(local.isrc) and valid_isrc(local.isrc) == c["isrc"]) or local.qobuz_id == c["id"]]
+        return list(dict.fromkeys(exact + [c["id"] for c in ranked[:8]]))
 
     def find(self, local, query=None):
         if not local.title and not local.qobuz_id and not query:
             return []
-        if local.qobuz_id and not query:
+        if self.catalog:
+            ids = self._profile_ids(local, query)
+        elif local.qobuz_id and not query:
             ids = [local.qobuz_id]
         else:
             query = query or " ".join(filter(None, [local.title, local.artists[0] if local.artists else ""]))
@@ -205,10 +243,15 @@ class RecordingMatcher:
                 break
             if track_id not in self.track_cache:
                 self.track_cache[track_id] = self.client.get_track_meta(track_id)
-            candidate = candidate_from_track(self.track_cache[track_id])
+            track = self.track_cache[track_id]
+            candidate = candidate_from_track(track)
             if candidate["id"] != str(track_id):
                 continue
-            result.append(assess_match(local, candidate))
+            if self.catalog:
+                if not self._belongs_to_profile(track, candidate):
+                    continue
+                candidate["profile_match"] = True
+            result.append(assess_match(local, candidate, self.profile_names))
         return sorted(result, key=lambda c: (c["strong"], c["score"]), reverse=True)
 
 
